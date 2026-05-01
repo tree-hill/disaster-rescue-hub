@@ -1,7 +1,43 @@
-# docker-compose.yml
-# 占位文件 — 服务定义在 P0.2 填充
-# 预计包含: postgres:15.5 / backend / frontend(可选)
-
 version: "3.9"
 
-services: {}
+services:
+  postgres:
+    image: postgres:15.5
+    container_name: drh_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-disaster}
+      POSTGRES_PASSWORD: ${DB_PASS:-changeme}
+      POSTGRES_DB: ${DB_NAME:-disaster_rescue}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-disaster} -d ${DB_NAME:-disaster_rescue}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: drh_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DB_HOST: postgres        # 容器内连 postgres，覆盖 .env 中的 localhost
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # backend 需要 P0.3 完成 Dockerfile 后才能启动
+
+volumes:
+  postgres_data:

@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P0 项目基建  
-当前任务：P0.2 Docker Compose 编排  
-最近完成：P0.1 创建仓库 + 目录结构（2026-05-02）  
-下一任务：P0.3 Backend 空架子（FastAPI）  
+当前任务：P0.3 Backend 空架子（FastAPI）  
+最近完成：P0.2 Docker Compose 编排（2026-05-02）  
+下一任务：P0.4 Frontend 空架子（Vite + React + TS）  
 
 ---
 
@@ -87,6 +87,30 @@
   - push 状态：已 push
 - 下一步建议：
   - 推进 P0.2：填充 docker-compose.yml，启动 postgres:15.5
+
+### P0.2 — Docker Compose 编排（2026-05-02）
+
+- 任务：P0.2 Docker Compose 编排
+- 执行工具：Claude Code
+- 修改类型：chore
+- 涉及文件：
+  - docker-compose.yml（改写，postgres:15.5 + backend 定义）
+  - docker/postgres/init/01_init.sql（新增，启用 uuid-ossp/pgcrypto）
+  - .env.example（新增，按 CONVENTIONS.md §10.1）
+- 新增内容：
+  - postgres:15.5 服务：端口 5432，卷持久化，healthcheck
+  - backend 服务：依赖 postgres healthy，热重载挂载（P0.3 后可用）
+  - .env.example 包含全部环境变量定义
+- 测试验证：
+  - `docker-compose up postgres` 启动 postgres 容器
+  - `psql -h localhost -U disaster -d disaster_rescue` 可连接
+- Git 提交：
+  - commit message：chore: P0.2 docker-compose with postgres and env example
+  - push 状态：已 push
+- 遗留问题：
+  - backend 服务需要 P0.3 完成 Dockerfile 后才能启动
+- 下一步建议：
+  - 推进 P0.3：创建 backend/Dockerfile + pyproject.toml + FastAPI /health 接口
 
 ---
 

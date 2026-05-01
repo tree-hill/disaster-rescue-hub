@@ -24,6 +24,24 @@
 
 ## 提交记录
 
+### 2026-05-02 — P0.2
+
+- 任务：P0.2 Docker Compose 编排
+- 工具：Claude Code
+- 分支：main
+- Commit message：chore: P0.2 docker-compose with postgres and env example
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - docker-compose.yml 改写（postgres:15.5 + backend 占位）
+  - docker/postgres/init/01_init.sql 新增
+  - .env.example 新增
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P0.1
 
 - 任务：P0.1 创建仓库 + 目录结构
