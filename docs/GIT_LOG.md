@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：chore: P0.1 create project directory skeleton
-- Commit hash：（见下方 git log）
+- Commit hash：2e869f1
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
