@@ -43,7 +43,6 @@
 
 ### To Do
 
-- [ ] P0.1 创建仓库 + 目录结构
 - [ ] P0.2 Docker Compose 编排
 - [ ] P0.3 Backend 空架子
 - [ ] P0.4 Frontend 空架子
@@ -55,7 +54,7 @@
 
 ### Done
 
-暂无。
+- [x] P0.1 创建仓库 + 目录结构（2026-05-02，Claude Code）
 
 ---
 

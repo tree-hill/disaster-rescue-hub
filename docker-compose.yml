@@ -1,0 +1,7 @@
+# docker-compose.yml
+# 占位文件 — 服务定义在 P0.2 填充
+# 预计包含: postgres:15.5 / backend / frontend(可选)
+
+version: "3.9"
+
+services: {}

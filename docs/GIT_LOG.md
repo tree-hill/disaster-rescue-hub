@@ -24,4 +24,20 @@
 
 ## 提交记录
 
-暂无。
+### 2026-05-02 — P0.1
+
+- 任务：P0.1 创建仓库 + 目录结构
+- 工具：Claude Code
+- 分支：main
+- Commit message：chore: P0.1 create project directory skeleton
+- Commit hash：（见下方 git log）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - 新增 backend/ frontend/ scripts/ tests/ docker/postgres/init/ docs/paper_assets/ 目录
+  - 新增 docker-compose.yml 占位文件
+  - 更新 DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```

@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P0 项目基建  
-当前任务：P0.1 创建仓库 + 目录结构  
-最近完成：暂无  
-下一任务：P0.2 Docker Compose 编排  
+当前任务：P0.2 Docker Compose 编排  
+最近完成：P0.1 创建仓库 + 目录结构（2026-05-02）  
+下一任务：P0.3 Backend 空架子（FastAPI）  
 
 ---
 
@@ -63,7 +63,30 @@
 
 ## 已完成任务
 
-暂无。
+### P0.1 — 创建仓库 + 目录结构（2026-05-02）
+
+- 任务：P0.1 创建仓库 + 目录结构
+- 执行工具：Claude Code
+- 修改类型：chore
+- 涉及文件：
+  - backend/.gitkeep（新增）
+  - frontend/.gitkeep（新增）
+  - scripts/.gitkeep（新增）
+  - tests/.gitkeep（新增）
+  - docker/postgres/init/.gitkeep（新增）
+  - docs/paper_assets/.gitkeep（新增）
+  - docker-compose.yml（新增，P0.2 占位）
+- 新增内容：
+  - 顶层 7 个目录骨架，全部符合 CONVENTIONS.md §2.1
+  - docker-compose.yml 占位文件
+- 测试验证：
+  - tree 输出与 BUILD_ORDER P0.1 要求一致
+  - docs/ 内 8 份契约文档齐全
+- Git 提交：
+  - commit message：chore: P0.1 create project directory skeleton
+  - push 状态：已 push
+- 下一步建议：
+  - 推进 P0.2：填充 docker-compose.yml，启动 postgres:15.5
 
 ---
 
