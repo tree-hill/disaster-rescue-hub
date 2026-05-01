@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：P0 项目基建  
-当前任务：P1.1 Alembic 初始化  
-最近完成：P0.5 提交完整基建（2026-05-02）  
-下一任务：P1.2 17 张表的 ORM 模型  
+当前阶段：P1 数据层  
+当前任务：P1.2 17 张表的 ORM 模型  
+最近完成：P1.1 Alembic 初始化（2026-05-02）  
+下一任务：P1.3 第一次迁移  
 
 ---
 
@@ -62,6 +62,32 @@
 ---
 
 ## 已完成任务
+
+### P1.1 — Alembic 初始化（2026-05-02）
+
+- 任务：P1.1 Alembic 初始化
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/core/config.py（新增，Pydantic Settings，含 database_url 属性）
+  - backend/app/db/__init__.py（新增）
+  - backend/app/db/base.py（新增，SQLAlchemy DeclarativeBase）
+  - backend/app/models/__init__.py（新增，空包，供 env.py import）
+  - backend/alembic.ini（新增，script_location=migrations，sqlalchemy.url 由 env.py 动态注入）
+  - backend/migrations/env.py（新增，async 模式，从 app.core.config 读 DATABASE_URL）
+  - backend/migrations/script.py.mako（新增，标准迁移模板）
+  - backend/migrations/versions/.gitkeep（新增）
+- 新增内容：
+  - Alembic 完整骨架（等价于 alembic init -t async migrations）
+  - async engine 迁移模式（run_async_migrations + asyncio.run）
+  - config.py 最小实现（DB + auth + app 字段，P2.1 再补全）
+- 测试验证：
+  - alembic current（有数据库连接时不报错，无连接时报 connection refused 属正常）
+- Git 提交：
+  - commit message：feat: P1.1 alembic init with async env and declarative base
+  - push 状态：已 push
+- 下一步建议：
+  - 推进 P1.2：严格按 DATA_CONTRACTS.md §1 DDL 实现 17 张 ORM 模型
 
 ### P0.1 — 创建仓库 + 目录结构（2026-05-02）
 

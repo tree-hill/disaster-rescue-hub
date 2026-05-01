@@ -7,8 +7,8 @@
 
 ## 当前阶段
 
-当前阶段：P0 项目基建  
-当前任务：P0.1 创建仓库 + 目录结构  
+当前阶段：P1 数据层  
+当前任务：P1.2 17 张表的 ORM 模型  
 任务来源：docs/BUILD_ORDER.md  
 
 ---
@@ -43,7 +43,6 @@
 
 ### To Do
 
-- [ ] P1.1 Alembic 初始化
 - [ ] P1.2 17 张表的 ORM 模型
 - [ ] P1.3 第一次迁移
 - [ ] P1.4 触发器与索引
@@ -60,6 +59,7 @@
 - [x] P0.3 Backend 空架子（2026-05-02，Claude Code）
 - [x] P0.4 Frontend 空架子（2026-05-02，Claude Code）
 - [x] P0.5 提交完整基建（2026-05-02，Claude Code）
+- [x] P1.1 Alembic 初始化（2026-05-02，Claude Code）
 
 ---
 

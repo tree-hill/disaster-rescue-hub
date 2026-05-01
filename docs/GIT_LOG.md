@@ -24,13 +24,35 @@
 
 ## 提交记录
 
+### 2026-05-02 — P1.1
+
+- 任务：P1.1 Alembic 初始化
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P1.1 alembic init with async env and declarative base
+- Commit hash：（待补充）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/core/config.py（新增，Pydantic Settings）
+  - backend/app/db/__init__.py + base.py（新增，DeclarativeBase）
+  - backend/app/models/__init__.py（新增，空包）
+  - backend/alembic.ini（新增）
+  - backend/migrations/env.py（新增，async 迁移）
+  - backend/migrations/script.py.mako（新增）
+  - backend/migrations/versions/.gitkeep（新增）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P0.5
 
 - 任务：P0.5 提交完整基建
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P0.5 complete project skeleton — docker fastapi vite-react
-- Commit hash：（提交后回填）
+- Commit hash：86d8d84
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
