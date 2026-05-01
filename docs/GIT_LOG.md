@@ -24,13 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-02 — P0.5
+
+- 任务：P0.5 提交完整基建
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P0.5 complete project skeleton — docker fastapi vite-react
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - docs/PROJECT_CONTEXT.md §6 标记 P0 完成
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md 更新
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P0.4
 
 - 任务：P0.4 Frontend 空架子
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P0.4 vite-react-ts frontend skeleton
-- Commit hash：（提交后回填）
+- Commit hash：a4e5310
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：

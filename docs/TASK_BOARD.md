@@ -43,7 +43,11 @@
 
 ### To Do
 
-- [ ] P0.5 提交完整基建
+- [ ] P1.1 Alembic 初始化
+- [ ] P1.2 17 张表的 ORM 模型
+- [ ] P1.3 第一次迁移
+- [ ] P1.4 触发器与索引
+- [ ] P1.5 Seed 数据脚本
 
 ### In Progress
 
@@ -55,6 +59,7 @@
 - [x] P0.2 Docker Compose 编排（2026-05-02，Claude Code）
 - [x] P0.3 Backend 空架子（2026-05-02，Claude Code）
 - [x] P0.4 Frontend 空架子（2026-05-02，Claude Code）
+- [x] P0.5 提交完整基建（2026-05-02，Claude Code）
 
 ---
 
