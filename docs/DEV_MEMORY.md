@@ -112,6 +112,25 @@
 - 下一步建议：
   - 推进 P0.3：创建 backend/Dockerfile + pyproject.toml + FastAPI /health 接口
 
+### chore — 新增 Skills 配置（2026-05-02）
+
+- 任务：新增最小 Skills 配置（非 BUILD_ORDER 任务）
+- 执行工具：Claude Code
+- 修改类型：chore
+- 涉及文件：
+  - .claude/skills/task-complete-git-push/SKILL.md（新增）
+  - .claude/skills/dev-memory-update/SKILL.md（新增）
+  - .agents/skills/task-complete-git-push/SKILL.md（新增）
+  - .agents/skills/dev-memory-update/SKILL.md（新增）
+- 主要变更：
+  - task-complete-git-push：每完成 BUILD_ORDER 任务后执行 commit+push 的标准流程
+  - dev-memory-update：每次变更后同步更新三份管理文档的标准格式
+- Git 提交：
+  - commit message：chore: add shared workflow skills
+  - push 状态：已 push
+- 下一步建议：
+  - 推进 P0.3：Backend 空架子（FastAPI /health 接口）
+
 ---
 
 ## 重要决策记录

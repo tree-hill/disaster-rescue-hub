@@ -24,6 +24,25 @@
 
 ## 提交记录
 
+### 2026-05-02 — chore: add shared workflow skills
+
+- 任务：新增 .claude/skills 和 .agents/skills 最小配置
+- 工具：Claude Code
+- 分支：main
+- Commit message：chore: add shared workflow skills
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - .claude/skills/task-complete-git-push/SKILL.md
+  - .claude/skills/dev-memory-update/SKILL.md
+  - .agents/skills/task-complete-git-push/SKILL.md
+  - .agents/skills/dev-memory-update/SKILL.md
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P0.2
 
 - 任务：P0.2 Docker Compose 编排
