@@ -24,13 +24,31 @@
 
 ## 提交记录
 
+### 2026-05-02 — P0.3
+
+- 任务：P0.3 Backend 空架子（FastAPI）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P0.3 fastapi skeleton with /health endpoint
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/pyproject.toml / Dockerfile / pytest.ini
+  - backend/app/main.py（/health + CORS + BusinessError handler）
+  - backend/app/core/exceptions.py
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — chore: add shared workflow skills
 
 - 任务：新增 .claude/skills 和 .agents/skills 最小配置
 - 工具：Claude Code
 - 分支：main
 - Commit message：chore: add shared workflow skills
-- Commit hash：（提交后回填）
+- Commit hash：c0c300d
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：

@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P0 项目基建  
-当前任务：P0.3 Backend 空架子（FastAPI）  
-最近完成：P0.2 Docker Compose 编排（2026-05-02）  
-下一任务：P0.4 Frontend 空架子（Vite + React + TS）  
+当前任务：P0.4 Frontend 空架子（Vite + React + TS）  
+最近完成：P0.3 Backend 空架子（2026-05-02）  
+下一任务：P0.5 提交完整基建  
 
 ---
 
@@ -130,6 +130,34 @@
   - push 状态：已 push
 - 下一步建议：
   - 推进 P0.3：Backend 空架子（FastAPI /health 接口）
+
+### P0.3 — Backend 空架子（2026-05-02）
+
+- 任务：P0.3 Backend 空架子（FastAPI）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/pyproject.toml（新增，依赖版本锁定至 CONVENTIONS §3.1）
+  - backend/Dockerfile（新增，python:3.11-slim + uv）
+  - backend/app/__init__.py（新增）
+  - backend/app/main.py（新增，FastAPI + /health + CORS + BusinessError handler）
+  - backend/app/core/__init__.py（新增）
+  - backend/app/core/exceptions.py（新增，BusinessError 基类）
+  - backend/pytest.ini（新增）
+  - backend/tests/__init__.py（新增）
+- 主要变更：
+  - /health 接口返回 {"status":"ok"}
+  - BusinessError 全局异常处理器挂载
+  - CORS 允许 localhost:5173（前端开发地址）
+- 验证命令：
+  - curl http://localhost:8000/health
+- Git 提交：
+  - commit message：feat: P0.3 fastapi skeleton with /health endpoint
+  - push 状态：已 push
+- 遗留问题：
+  - 依赖安装需用户本地执行 uv pip install -e ".[dev]" 或 docker-compose build backend
+- 下一步建议：
+  - 推进 P0.4：Frontend 空架子（Vite + React + TS）
 
 ---
 

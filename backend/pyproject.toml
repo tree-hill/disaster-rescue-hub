@@ -1,0 +1,62 @@
+[project]
+name = "disaster-rescue-hub-backend"
+version = "1.0.0"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    # Web 框架
+    "fastapi>=0.110,<0.111",
+    "uvicorn[standard]>=0.27,<0.28",
+    # ORM 与数据库
+    "sqlalchemy>=2.0,<2.1",
+    "asyncpg>=0.29,<0.30",
+    "alembic>=1.13,<1.14",
+    # Schema 校验
+    "pydantic>=2.6,<2.7",
+    "pydantic-settings>=2.2,<2.3",
+    # WebSocket
+    "python-socketio>=5.11,<5.12",
+    # 安全
+    "python-jose[cryptography]>=3.3,<3.4",
+    "passlib[bcrypt]>=1.7,<1.8",
+    # 日志
+    "structlog>=24.1,<25.0",
+    # 算法
+    "numpy>=1.26,<2.0",
+    "scipy>=1.12,<1.13",
+    # CV
+    "ultralytics>=8.1,<8.2",
+    "torch>=2.2,<2.3",
+    "opencv-python>=4.9,<4.10",
+    "pillow>=10.2,<10.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<8.1",
+    "pytest-asyncio>=0.23,<0.24",
+    "pytest-cov>=4.1,<4.2",
+    "httpx>=0.26,<0.27",
+    "ruff>=0.3,<0.4",
+    "mypy>=1.9,<1.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "B", "C4", "ISC", "PIE", "RET", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
