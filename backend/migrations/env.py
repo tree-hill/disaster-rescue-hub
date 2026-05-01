@@ -4,8 +4,9 @@ import asyncio
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import pool
 from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from alembic import context
 
@@ -15,7 +16,7 @@ from app.db.base import Base
 # import all models so their metadata is populated for autogenerate
 import app.models  # noqa: F401
 
-# asyncpg 在 Windows Python 3.12 上需要 SelectorEventLoop
+# asyncpg on Windows requires SelectorEventLoop
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
@@ -26,10 +27,7 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# 迁移使用 psycopg2 同步连接（避免 Windows asyncpg 兼容问题）
-# 应用运行时仍使用 asyncpg（app/db/session.py）
-sync_url = settings.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-config.set_main_option("sqlalchemy.url", sync_url)
+config.set_main_option("sqlalchemy.url", settings.database_url)
 
 
 def run_migrations_offline() -> None:
@@ -50,15 +48,18 @@ def do_run_migrations(connection: Connection) -> None:
         context.run_migrations()
 
 
-def run_migrations_online() -> None:
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
+async def run_async_migrations() -> None:
+    connectable = create_async_engine(
+        settings.database_url,
         poolclass=pool.NullPool,
     )
-    with connectable.connect() as connection:
-        do_run_migrations(connection)
-    connectable.dispose()
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
+
+def run_migrations_online() -> None:
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

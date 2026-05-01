@@ -24,13 +24,34 @@
 
 ## 提交记录
 
+### 2026-05-02 — P1.3 修复与补验
+
+- 任务：P1.3 修复与补验（Python 环境 + 端口冲突修复）
+- 工具：Claude Code
+- 分支：main
+- Commit message：fix: P1.3 stabilize python env and postgres migration config
+- Commit hash：（待填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - docker-compose.yml（删除 version 字段，PostgreSQL 主机端口 5432 → 5433）
+  - .env.example（DB_PORT=5433）
+  - backend/migrations/env.py（恢复 asyncpg 异步迁移模式，移除 psycopg2 同步模式）
+  - docs/DEV_MEMORY.md（新增环境约束、已知设计偏差、P1.3 修复记录）
+  - docs/TASK_BOARD.md（更新当前任务、新增 Codex 审查项）
+  - docs/GIT_LOG.md（本次记录）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P1.3
 
 - 任务：P1.3 第一次迁移
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P1.3 first migration — 17 tables + indexes + triggers
-- Commit hash：（待补充）
+- Commit hash：678bff2
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：

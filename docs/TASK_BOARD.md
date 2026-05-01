@@ -8,8 +8,9 @@
 ## 当前阶段
 
 当前阶段：P1 数据层  
-当前任务：P1.4 触发器与索引  
+当前任务：P1.4 触发器与索引（GIN 索引补充；触发器已在 P1.3 完成）  
 任务来源：docs/BUILD_ORDER.md  
+备注：建议 Codex 先审查 P1.2/P1.3 再推进 P1.4  
 
 ---
 
@@ -43,8 +44,9 @@
 
 ### To Do
 
+- [ ] Codex 审查：P1.2 ORM 模型字段对照 DATA_CONTRACTS.md
+- [ ] Codex 审查：P1.3 迁移脚本字段对照 DATA_CONTRACTS.md（手写脚本，存在漂移风险）
 - [ ] P1.4 触发器与索引（触发器已在 P1.3 完成，仅补充 GIN 索引）
-- [ ] P1.4 触发器与索引
 - [ ] P1.5 Seed 数据脚本
 
 ### In Progress
@@ -61,6 +63,7 @@
 - [x] P1.1 Alembic 初始化（2026-05-02，Claude Code）
 - [x] P1.2 17 张表的 ORM 模型（2026-05-02，Claude Code）
 - [x] P1.3 第一次迁移（2026-05-02，Claude Code）
+- [x] P1.3 修复与补验：Python 3.11 venv + 端口 5433 + asyncpg env.py（2026-05-02，Claude Code）
 
 ---
 

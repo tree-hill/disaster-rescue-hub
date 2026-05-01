@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P1 数据层  
-当前任务：P1.4 触发器与索引  
-最近完成：P1.3 第一次迁移（2026-05-02）  
-下一任务：P1.5 Seed 数据脚本  
+当前任务：P1.4 触发器与索引（待 Codex 审查 P1.2/P1.3 后推进）  
+最近完成：P1.3 修复与补验（2026-05-02）  
+下一任务：P1.4 GIN 索引（触发器已在 P1.3 完成）  
 
 ---
 
@@ -26,6 +26,26 @@
 6. 代码目录和命名以 `docs/CONVENTIONS.md` 为准。
 7. 每完成一个 BUILD_ORDER 任务必须 commit + push。
 8. 每次重要修改必须记录到本文档。
+
+## 环境约束（必读）
+
+- **后端 Python**：必须使用 `backend\.venv\Scripts\python.exe`（Python 3.11.9）。  
+  禁止使用全局 python / pip / alembic（系统默认为 Python 3.12）。
+- **数据库主机端口**：5433（容器内仍为 5432）。  
+  原因：本机安装的 Windows 原生 PostgreSQL 15 占用了 5432，主机侧若使用 5432 会连到错误的数据库实例。  
+  所有 `.env` 中的 `DB_PORT` 须为 5433。
+- **迁移驱动**：asyncpg（异步）。`migrations/env.py` 已恢复为 asyncpg 模式，禁止引入 psycopg2-binary。
+
+## 已知设计偏差
+
+### 偏差 1：idx_blackboard_active 使用全量索引
+
+- **位置**：`backend/migrations/versions/26cff1e230e8_init_schema.py`
+- **DATA_CONTRACTS.md 原意**：`CREATE INDEX idx_blackboard_active ON blackboard_entries(expires_at) WHERE expires_at > NOW();`
+- **实际实现**：全量索引，无 WHERE 谓词
+- **原因**：PostgreSQL 要求索引谓词中的函数必须为 `IMMUTABLE`，而 `NOW()` 是 `STABLE`，无法用于部分索引。
+- **影响**：索引更大（包含已过期条目），查询仍可工作但效率略低于部分索引。
+- **处理**：接受偏差，P1.4 不再处理此项。
 
 ---
 
@@ -62,6 +82,38 @@
 ---
 
 ## 已完成任务
+
+### P1.3 修复与补验 — Python 环境 + 端口修复（2026-05-02）
+
+- 任务：P1.3 修复与补验
+- 执行工具：Claude Code
+- 修改类型：fix
+- 涉及文件：
+  - docker-compose.yml（端口 5432 → 5433，删除废弃 version 字段）
+  - .env.example（DB_PORT=5433）
+  - backend/.env（DB_PORT=5433，未入库）
+  - （根目录）.env（DB_PORT=5433，未入库）
+  - backend/migrations/env.py（恢复 asyncpg 异步迁移模式，移除 psycopg2 同步模式）
+  - backend/.venv/（新建 Python 3.11.9 虚拟环境）
+- 主要原因：
+  - 本机 Windows 原生 PostgreSQL 15 占用端口 5432，导致 alembic/asyncpg 从主机侧连接时命中错误的数据库实例
+  - env.py 临时改用 psycopg2 同步模式（P1.3 遗留），但 psycopg2-binary 未在 pyproject.toml 中声明，且在中文 Windows 上存在 GBK 编码问题
+- 测试验证：
+  - docker port drh_postgres → `5432/tcp -> 0.0.0.0:5433` ✓
+  - asyncpg host-side 连接 localhost:5433 → `SELECT 1 = 1` ✓
+  - `.\.venv\Scripts\alembic.exe current` → `26cff1e230e8 (head)` ✓
+  - DB 表数量：18（17 + alembic_version）✓
+  - DB 触发器：4 条 set_timestamp_* ✓
+  - DB 索引：39 个非 PK 索引 ✓
+- Git 提交：
+  - commit message：fix: P1.3 stabilize python env and postgres migration config
+  - push 状态：已 push
+- 遗留问题：
+  - P1.3 迁移为手写脚本（非 autogenerate），建议 Codex 做字段级审查
+  - idx_blackboard_active 使用全量索引（见"已知设计偏差"章节）
+- 下一步建议：
+  - 建议 Codex 审查 P1.2（17 ORM 模型）和 P1.3（迁移脚本字段）是否与 DATA_CONTRACTS.md 完全一致
+  - 审查通过后推进 P1.4（GIN 索引补充）
 
 ### P1.3 — 第一次迁移（2026-05-02）
 
