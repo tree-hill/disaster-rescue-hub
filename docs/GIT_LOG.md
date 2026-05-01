@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：fix: P1.3 stabilize python env and postgres migration config
-- Commit hash：（待填）
+- Commit hash：37a5139
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
