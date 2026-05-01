@@ -24,13 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-02 — P1.2
+
+- 任务：P1.2 17 张表的 ORM 模型
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P1.2 implement 17 ORM models from DATA_CONTRACTS DDL
+- Commit hash：（待补充）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/models/ 下 8 个模型文件（user/robot/task/dispatch/intervention/blackboard/alert/replay）
+  - backend/app/models/__init__.py 导入全部 17 个模型类
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P1.1
 
 - 任务：P1.1 Alembic 初始化
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P1.1 alembic init with async env and declarative base
-- Commit hash：（待补充）
+- Commit hash：f5db3f5
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：

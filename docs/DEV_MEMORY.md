@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P1 数据层  
-当前任务：P1.2 17 张表的 ORM 模型  
-最近完成：P1.1 Alembic 初始化（2026-05-02）  
-下一任务：P1.3 第一次迁移  
+当前任务：P1.3 第一次迁移  
+最近完成：P1.2 17 张表 ORM 模型（2026-05-02）  
+下一任务：P1.4 触发器与索引  
 
 ---
 
@@ -62,6 +62,35 @@
 ---
 
 ## 已完成任务
+
+### P1.2 — 17 张表的 ORM 模型（2026-05-02）
+
+- 任务：P1.2 17 张表的 ORM 模型
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/models/user.py（新增，User / Role / UserRole）
+  - backend/app/models/robot.py（新增，RobotGroup / Robot / RobotState / RobotFault）
+  - backend/app/models/task.py（新增，Task / TaskAssignment）
+  - backend/app/models/dispatch.py（新增，Auction / Bid）
+  - backend/app/models/intervention.py（新增，HumanIntervention）
+  - backend/app/models/blackboard.py（新增，BlackboardEntry）
+  - backend/app/models/alert.py（新增，Alert）
+  - backend/app/models/replay.py（新增，Scenario / ReplaySession / ExperimentRun）
+  - backend/app/models/__init__.py（更新，导入全部 17 个模型）
+- 新增内容：
+  - 17 个 ORM 类，严格对应 DATA_CONTRACTS.md §1 DDL
+  - VARCHAR+CHECK 约束替代 PostgreSQL ENUM（遵守 DATA_CONTRACTS §2）
+  - JSONB 字段：capability / position / sensor_data / target_area 等
+  - BIGSERIAL 主键：robot_states（高频写入）
+  - 跨模块 FK 全部使用字符串引用（如 "tasks.id"），Alembic mapper 延迟解析
+- 测试验证：
+  - grep -r "class.*Base" app/models | wc -l → 17 ✓
+- Git 提交：
+  - commit message：feat: P1.2 implement 17 ORM models from DATA_CONTRACTS DDL
+  - push 状态：已 push
+- 下一步建议：
+  - 推进 P1.3：alembic revision --autogenerate -m "init schema"，核查迁移脚本
 
 ### P1.1 — Alembic 初始化（2026-05-02）
 
