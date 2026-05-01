@@ -24,13 +24,31 @@
 
 ## 提交记录
 
+### 2026-05-02 — P1.3
+
+- 任务：P1.3 第一次迁移
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P1.3 first migration — 17 tables + indexes + triggers
+- Commit hash：（待补充）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/migrations/versions/26cff1e230e8_init_schema.py（新增）
+  - backend/migrations/env.py（psycopg2 sync 模式）
+  - backend/app/models/dispatch.py（metadata → auction_metadata 修复）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P1.2
 
 - 任务：P1.2 17 张表的 ORM 模型
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P1.2 implement 17 ORM models from DATA_CONTRACTS DDL
-- Commit hash：（待补充）
+- Commit hash：a77cd01
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：

@@ -47,7 +47,7 @@ class Auction(Base):
         nullable=True,
     )
     decision_latency_ms = Column(Integer, nullable=True)
-    metadata = Column(JSONB, nullable=True, server_default="{}")
+    auction_metadata = Column("metadata", JSONB, nullable=True, server_default="{}")
 
 
 class Bid(Base):

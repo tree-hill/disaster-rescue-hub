@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P1 数据层  
-当前任务：P1.3 第一次迁移  
-最近完成：P1.2 17 张表 ORM 模型（2026-05-02）  
-下一任务：P1.4 触发器与索引  
+当前任务：P1.4 触发器与索引  
+最近完成：P1.3 第一次迁移（2026-05-02）  
+下一任务：P1.5 Seed 数据脚本  
 
 ---
 
@@ -62,6 +62,29 @@
 ---
 
 ## 已完成任务
+
+### P1.3 — 第一次迁移（2026-05-02）
+
+- 任务：P1.3 第一次迁移
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/migrations/versions/26cff1e230e8_init_schema.py（新增，手写完整 upgrade/downgrade）
+  - backend/migrations/env.py（更新，改用 psycopg2 同步连接规避 Windows asyncpg 兼容问题）
+  - backend/app/models/dispatch.py（修复 metadata → auction_metadata，规避 SQLAlchemy 保留属性名）
+- 新增内容：
+  - 17 张表 + 所有索引 + 触发器的完整迁移脚本
+  - alembic_version 表记录 26cff1e230e8
+- 已知偏差：
+  - idx_blackboard_active 移除 WHERE expires_at > NOW()（PostgreSQL 要求索引谓词函数必须 IMMUTABLE，NOW() 是 STABLE）
+- 测试验证：
+  - SELECT count(*) FROM information_schema.tables WHERE table_schema='public' → 18 ✓
+  - SELECT * FROM pg_trigger WHERE tgname LIKE 'set_timestamp%' → 4 条 ✓
+- Git 提交：
+  - commit message：feat: P1.3 first migration — 17 tables + indexes + triggers
+  - push 状态：已 push
+- 下一步建议：
+  - P1.4：写第二个迁移，补齐 GIN 索引（触发器已包含在本次）
 
 ### P1.2 — 17 张表的 ORM 模型（2026-05-02）
 
