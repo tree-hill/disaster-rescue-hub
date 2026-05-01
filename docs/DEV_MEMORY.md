@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P0 项目基建  
-当前任务：P0.4 Frontend 空架子（Vite + React + TS）  
-最近完成：P0.3 Backend 空架子（2026-05-02）  
-下一任务：P0.5 提交完整基建  
+当前任务：P0.5 提交完整基建  
+最近完成：P0.4 Frontend 空架子（2026-05-02）  
+下一任务：P1.1 Alembic 初始化  
 
 ---
 
@@ -158,6 +158,37 @@
   - 依赖安装需用户本地执行 uv pip install -e ".[dev]" 或 docker-compose build backend
 - 下一步建议：
   - 推进 P0.4：Frontend 空架子（Vite + React + TS）
+
+### P0.4 — Frontend 空架子（2026-05-02）
+
+- 任务：P0.4 Frontend 空架子（Vite + React + TS）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - frontend/package.json（新增，依赖锁定至 CONVENTIONS §3.2）
+  - frontend/tsconfig.json / tsconfig.node.json（新增，strict 模式）
+  - frontend/vite.config.ts（新增，@ 别名 + API/WS 代理）
+  - frontend/tailwind.config.js / postcss.config.js（新增）
+  - frontend/index.html（新增）
+  - frontend/src/main.tsx（新增，ReactDOM + RouterProvider）
+  - frontend/src/styles/global.css（新增，Tailwind 入口）
+  - frontend/src/router/index.tsx（新增，/ → /login）
+  - frontend/src/pages/Login.tsx（新增，占位页面）
+  - frontend/src/api/client.ts（新增，axios 单例 + 拦截器）
+  - frontend/src/constants/index.ts（新增，与后端常量同步）
+- 主要变更：
+  - 完整 src/ 目录结构对照 CONVENTIONS §2.3
+  - vite proxy 将 /api 和 /socket.io 转发至 localhost:8000
+- 验证命令：
+  - cd frontend && npm install && npm run dev
+  - npm run build
+- Git 提交：
+  - commit message：feat: P0.4 vite-react-ts frontend skeleton
+  - push 状态：已 push
+- 遗留问题：
+  - 需用户本地执行 npm install（node_modules 不入库）
+- 下一步建议：
+  - 推进 P0.5：打标记 commit + 进入 P1 数据层
 
 ---
 

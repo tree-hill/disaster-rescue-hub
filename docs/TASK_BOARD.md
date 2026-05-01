@@ -43,7 +43,6 @@
 
 ### To Do
 
-- [ ] P0.4 Frontend 空架子
 - [ ] P0.5 提交完整基建
 
 ### In Progress
@@ -55,6 +54,7 @@
 - [x] P0.1 创建仓库 + 目录结构（2026-05-02，Claude Code）
 - [x] P0.2 Docker Compose 编排（2026-05-02，Claude Code）
 - [x] P0.3 Backend 空架子（2026-05-02，Claude Code）
+- [x] P0.4 Frontend 空架子（2026-05-02，Claude Code）
 
 ---
 

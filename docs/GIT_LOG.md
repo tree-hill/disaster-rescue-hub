@@ -24,6 +24,22 @@
 
 ## 提交记录
 
+### 2026-05-02 — P0.4
+
+- 任务：P0.4 Frontend 空架子
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P0.4 vite-react-ts frontend skeleton
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - frontend/ 完整目录结构（package.json / tsconfig / vite / tailwind / router / client）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P0.3
 
 - 任务：P0.3 Backend 空架子（FastAPI）
