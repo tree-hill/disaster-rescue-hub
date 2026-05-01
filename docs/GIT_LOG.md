@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：chore: P0.2 docker-compose with postgres and env example
-- Commit hash：（提交后回填）
+- Commit hash：c321c02
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
