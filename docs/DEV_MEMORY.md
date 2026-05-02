@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：P2 认证 + 基础 API  
-当前任务：P2.6 统一错误处理（X-Request-Id 中间件 + RequestValidationError 转 ErrorResponse）  
-最近完成：P2.5 /auth/refresh + /auth/me + /auth/logout（2026-05-02）  
-下一任务：P2.6 BusinessError handler 已就位，补 X-Request-Id 中间件 + RequestValidationError 统一格式  
+当前阶段：P2 → P3 切换中  
+当前任务：P3.1 机器人 Schemas + Repository  
+最近完成：P2.6 统一错误处理（X-Request-Id 中间件 + ErrorResponse 统一格式 + 兜底 500 sanitization）（2026-05-02）  
+下一任务：P3.1 `app/schemas/robot.py`（RobotCreate/Read/Update/StateRead）+ `app/repositories/robot.py` + `app/repositories/robot_state.py`  
 
 ---
 
@@ -91,6 +91,44 @@
 ---
 
 ## 已完成任务
+
+### P2.6 — 统一错误处理（X-Request-Id + ErrorResponse + 兜底 500）（2026-05-02）
+
+- 任务：P2.6 统一错误处理（BUILD_ORDER.md §P2.6）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/core/middleware.py（新增）
+  - backend/app/schemas/error.py（新增）
+  - backend/app/main.py（修改）
+- 新增内容：
+  - `RequestIdMiddleware`（纯 ASGI 实现）：
+    - 入站读 `X-Request-Id`（透传客户端串联值），缺失则生成 `req-<uuid4-hex32>`
+    - 写入 `scope["state"]["request_id"]`，下游通过 `request.state.request_id` 读取
+    - 包装 send 在 `http.response.start` 注入响应头 `X-Request-Id`，并去重已存在条目
+  - `schemas/error.py`：`ErrorDetail{field?, code, message}` + `ErrorResponse{code, message, details, request_id, timestamp}`，对照 DATA_CONTRACTS §5 / API_SPEC §0.3
+  - `main.py` 三大异常处理：
+    - `BusinessError` → 用 `exc.http_status` + ErrorResponse 形态（含 request_id / timestamp）
+    - `RequestValidationError` → 422 + `422_VALIDATION_FAILED_001`，details 列表填 `{field, code, message}`（field 取 loc 跳过 "body"）
+    - 兜底 `Exception` → 500 + `500_INTERNAL_ERROR_001` + `message="服务器内部错误"`，仅写日志（`logger.exception`），响应体绝不暴露异常类型/堆栈/原始 message
+  - CORS 中间件 `expose_headers=[X-Request-Id]`，浏览器端可读 trace id
+- 设计决策：
+  - **不用 BaseHTTPMiddleware** —— Starlette #1996 / FastAPI #4719 已知冲突：当注册 `@app.exception_handler(Exception)` 时，handler 跑了但异常仍被 BaseHTTPMiddleware.call_next 重新抛出，客户端拿不到响应。改写为纯 ASGI 中间件直接包装 send 就避开此问题。
+  - **`raise_app_exceptions=False`（仅测试侧用）**—— Starlette `ServerErrorMiddleware` 在调用 500 handler 后**总是** `raise exc`（设计意图：让 ASGI server 自己记日志）。生产 uvicorn 行为不变；httpx ASGITransport 测试时关闭再抛出，让 500 响应能被测试客户端接收。
+  - 响应 header 用 latin-1 编码（HTTP/ASGI 规范：header 必须是 ISO-8859-1 字节）
+  - 中间件挂载顺序：`add_middleware(CORS) → add_middleware(RequestIdMiddleware)` —— 后加在外层，所有响应（含 CORS preflight）都带 X-Request-Id
+- 测试验证（自检脚本 6 项，全绿，httpx + ASGITransport）：
+  - [1] /health 自动生成 X-Request-Id（req-<hex32>）✓
+  - [2] 客户端传 `X-Request-Id: req-client-trace-abc123` → 响应同值透传 ✓
+  - [3] BusinessError 路径（/auth/me 缺 token）→ 401 + body `code=401_AUTH_TOKEN_INVALID_001` + body.request_id 与 header 一致 + ErrorResponse schema 校验通过 ✓
+  - [4] RequestValidationError（/auth/login 缺 password）→ 422 + `422_VALIDATION_FAILED_001` + details 含 `field=password` ✓
+  - [4b] /auth/login `password=""`（长度违规）→ 422 + details 含 `field=password` ✓
+  - [5] 临时 `/__boom__` 路由抛 ZeroDivisionError("secret-internal-detail-do-not-leak") → 500 + `500_INTERNAL_ERROR_001` + `message=服务器内部错误`，响应体**不含** "secret-internal-detail" / "ZeroDivisionError" / "Traceback" ✓
+- Git 提交：
+  - commit message：feat: P2.6 unified error handling with X-Request-Id and ErrorResponse
+  - push 状态：待执行
+- 下一步建议：
+  - P3.1：`app/schemas/robot.py`（对照 DATA_CONTRACTS §2.1 robots 表）+ `app/repositories/robot.py` + `app/repositories/robot_state.py`（时序）
 
 ### P2.5 — /auth/refresh + /auth/me + /auth/logout（2026-05-02）
 

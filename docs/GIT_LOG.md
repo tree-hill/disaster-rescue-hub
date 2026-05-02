@@ -24,6 +24,32 @@
 
 ## 提交记录
 
+### 2026-05-02 — P2.6
+
+- 任务：P2.6 统一错误处理（X-Request-Id + ErrorResponse + 兜底 500）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P2.6 unified error handling with X-Request-Id and ErrorResponse
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/core/middleware.py（新增）：纯 ASGI `RequestIdMiddleware`，每请求生成或透传 `X-Request-Id`（`req-<uuid4-hex32>`），写入 `scope["state"]["request_id"]`，包装 send 在 `http.response.start` 注入响应头（去重）。**有意不用 BaseHTTPMiddleware**（Starlette #1996 / FastAPI #4719：与 `@app.exception_handler(Exception)` 兜底冲突）
+  - backend/app/schemas/error.py（新增）：`ErrorDetail{field?, code, message}` + `ErrorResponse{code, message, details, request_id, timestamp}`，对照 DATA_CONTRACTS §5 / API_SPEC §0.3
+  - backend/app/main.py（修改）：挂 `RequestIdMiddleware`（最外层）+ CORS expose `X-Request-Id`；BusinessError handler 切换到 ErrorResponse 形态；新增 RequestValidationError handler → `422_VALIDATION_FAILED_001`；新增兜底 Exception handler → `500_INTERNAL_ERROR_001`（响应体仅 `服务器内部错误`，不暴露异常类型/堆栈/原始 message，仅 `logger.exception` 写日志）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 自检（6/6 全绿，httpx + ASGITransport，`raise_app_exceptions=False` 仅测试侧用以收回 ServerErrorMiddleware re-raise 的 500）：
+  - [1] /health 自动生成 X-Request-Id（req-<hex32>）
+  - [2] 客户端传 X-Request-Id 透传到响应同值
+  - [3] BusinessError 路径（/auth/me 缺 token）→ 401 + body.code=401_AUTH_TOKEN_INVALID_001 + body.request_id 与 header 一致 + ErrorResponse schema 校验通过
+  - [4] RequestValidationError（/auth/login 缺 password）→ 422 + 422_VALIDATION_FAILED_001 + details 含 field=password
+  - [4b] /auth/login password="" → 422 + details 含 field=password
+  - [5] 兜底 500：临时 `/__boom__` 抛 `ZeroDivisionError("secret-internal-detail-do-not-leak")` → 500 + 500_INTERNAL_ERROR_001 + message=服务器内部错误，响应体**不含** "secret-internal-detail" / "ZeroDivisionError" / "Traceback"
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P2.5
 
 - 任务：P2.5 其他认证接口（refresh + me + logout）
