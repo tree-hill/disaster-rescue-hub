@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P1.5 seed initial roles users robots groups scenario
-- Commit hash：（push 后回填）
+- Commit hash：15cec31
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
