@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P2.2 auth schemas and UserRepository
-- Commit hash：（push 后回填）
+- Commit hash：e6a87c2
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
