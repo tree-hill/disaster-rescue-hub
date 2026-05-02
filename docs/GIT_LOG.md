@@ -24,6 +24,37 @@
 
 ## 提交记录
 
+### 2026-05-02 — P3.1
+
+- 任务：P3.1 机器人 Schemas + Repository
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P3.1 robot schemas and repositories
+- Commit hash：（push 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/schemas/common.py（新增）：Position / RobotCapability / Detection / VisionData / SensorData，Pydantic v2，跨领域复用（P3 / P4 / P5 / P6）
+  - backend/app/schemas/robot.py（新增）：RobotBase / RobotCreate / RobotUpdate / RobotRead / RobotStateRead，对照 DATA_CONTRACTS §5 + §1.4 + §1.6
+  - backend/app/repositories/robot.py（新增）：`RobotRepository` 类，`save / find_by_id / find_by_code / find_all(only_active=True) / find_by_group`，事务边界=add+flush（不在 repo commit）
+  - backend/app/repositories/robot_state.py（新增）：`RobotStateRepository` 类，`append / find_latest_by_robot / find_by_robot_in_window(start_time, end_time, limit=100)`，**limit 上限 1000 不在 repo 校验**，留给 service / API 层
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 自检（18/18 全绿，临时脚本 backend/_p31_check.py 验证后删除，不入库）：
+  - schema imports / RobotCreate 合法 / 缺字段拒绝 / type Literal 守卫
+  - find_all(only_active=True)=25（types={uav,ugv,usv}）
+  - find_by_code('UAV-001') 命中 + has_yolo=True / find_by_code('NOT-EXIST-999')=None / find_by_id 还原
+  - find_by_group(空中编队 Alpha)=10 UAV（UAV-001..UAV-010）
+  - RobotState.append 拿到 BIGSERIAL id + recorded_at
+  - find_latest_by_robot 返回同一条
+  - RobotStateRead.model_validate（fsm_state=IDLE / position.lat=30.2741 / battery=88.5）
+  - find_by_robot_in_window(limit=10) 含本次写入
+  - RobotRead.model_validate(uav001) → code=UAV-001
+  - **rollback 后开新 session 复检 robot_states 干净（DB 未污染）**
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P2.6
 
 - 任务：P2.6 统一错误处理（X-Request-Id + ErrorResponse + 兜底 500）

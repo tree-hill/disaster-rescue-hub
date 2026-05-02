@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P2 → P3 切换中  
-当前任务：P3.1 机器人 Schemas + Repository  
+当前阶段：P3 机器人模块  
+当前任务：P3.2 机器人 REST 接口实现  
 任务来源：docs/BUILD_ORDER.md  
-备注：P2.6 完成（X-Request-Id 中间件 + ErrorResponse 统一格式 + 兜底 500 sanitization，6/6 自检），P2 阶段全部完结，进入 P3 机器人模块  
+备注：P3.1 完成（schemas/common.py + schemas/robot.py + repositories/robot.py + repositories/robot_state.py，18/18 自检全绿，rollback 不污染 DB），进入 P3.2 实现 API_SPEC §2 全部 /robots 路由  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P3.1 机器人 Schemas + Repository：`app/schemas/robot.py`（RobotCreate/Read/Update/StateRead）+ `app/repositories/robot.py` + `app/repositories/robot_state.py`
+- [ ] P3.2 机器人 REST 接口实现：`app/api/v1/robots.py` 全部 7 路由（GET 列表分页过滤 / GET 单查嵌入最新 state / POST 处理 code 唯一 409 / PUT / DELETE 软删除 / GET /states 守卫 limit≤1000 / GET /faults）；`POST /robots/{id}/recall` 留到 P3.6 联合 intervention
 
 ### In Progress
 
@@ -70,6 +70,7 @@
 - [x] P2.4 JWT 中间件：app/api/deps.py（oauth2_scheme + get_current_user + require_permission 依赖工厂），覆盖 401_AUTH_TOKEN_EXPIRED_001 / 401_AUTH_TOKEN_INVALID_001 / 403_AUTH_PERMISSION_DENIED_001，10/10 自检（2026-05-02，Claude Code）
 - [x] P2.5 其他认证接口：POST /auth/refresh（AuthService.refresh）+ GET /auth/me + POST /auth/logout（204，response_class=Response，简化版无黑名单），httpx ASGITransport 10/10 自检（2026-05-02，Claude Code）
 - [x] P2.6 统一错误处理：纯 ASGI `RequestIdMiddleware`（X-Request-Id 透传/生成）+ `ErrorResponse` schema + BusinessError/RequestValidationError/Exception 三大 handler，兜底 500 sanitization 不暴露内部错误细节，6/6 自检（2026-05-02，Claude Code）
+- [x] P3.1 机器人 Schemas + Repository：`schemas/common.py`（Position/RobotCapability/Detection/VisionData/SensorData，跨领域复用）+ `schemas/robot.py`（RobotBase/Create/Update/Read/StateRead，Pydantic v2）+ `repositories/robot.py`（save/find_by_id/find_by_code/find_all/find_by_group，事务边界=add+flush）+ `repositories/robot_state.py`（append/find_latest_by_robot/find_by_robot_in_window，limit 上限不在 repo 校验），18/18 自检全绿、rollback 不污染 DB（2026-05-02，Claude Code）
 
 ---
 

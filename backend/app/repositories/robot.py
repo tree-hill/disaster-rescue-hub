@@ -1,0 +1,54 @@
+"""Robot 数据访问层。
+
+对照 BUILD_ORDER P3.1（save / find_by_id / find_all / find_by_group）+ 补充
+find_by_code（seed 数据使用 UAV-001 / UGV-001 这类业务 code，后续 P3.2 接口
+查询、调试与测试都会用到）。
+
+事务边界：本仓库只 add + flush，不 commit / rollback；事务由调用方（service / 测试）控制。
+"""
+from __future__ import annotations
+
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.robot import Robot
+
+
+class RobotRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def save(self, robot: Robot) -> Robot:
+        """新增或附加已存在的对象（不在此 commit，由调用方控制事务边界）。"""
+        self.session.add(robot)
+        await self.session.flush()
+        return robot
+
+    async def find_by_id(self, robot_id: UUID) -> Robot | None:
+        return await self.session.get(Robot, robot_id)
+
+    async def find_by_code(self, code: str) -> Robot | None:
+        """按业务 code（如 'UAV-001'）查询。code 是 robots 表的 UNIQUE 列。"""
+        stmt = select(Robot).where(Robot.code == code)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def find_all(self, *, only_active: bool = True) -> list[Robot]:
+        """返回机器人列表。only_active=True 时仅返回 is_active=TRUE 的（默认）。
+
+        排序按 code 升序，便于稳定调试 / 测试断言。
+        """
+        stmt = select(Robot)
+        if only_active:
+            stmt = stmt.where(Robot.is_active.is_(True))
+        stmt = stmt.order_by(Robot.code.asc())
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def find_by_group(self, group_id: UUID) -> list[Robot]:
+        """按编队 group_id 查询，返回该编队下的全部机器人（含 inactive）。
+
+        is_active 过滤逻辑由 service / API 层视场景决定，不在 repo 内部硬编码。
+        """
+        stmt = select(Robot).where(Robot.group_id == group_id).order_by(Robot.code.asc())
+        return list((await self.session.execute(stmt)).scalars().all())

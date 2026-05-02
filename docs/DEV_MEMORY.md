@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：P2 → P3 切换中  
-当前任务：P3.1 机器人 Schemas + Repository  
-最近完成：P2.6 统一错误处理（X-Request-Id 中间件 + ErrorResponse 统一格式 + 兜底 500 sanitization）（2026-05-02）  
-下一任务：P3.1 `app/schemas/robot.py`（RobotCreate/Read/Update/StateRead）+ `app/repositories/robot.py` + `app/repositories/robot_state.py`  
+当前阶段：P3 机器人模块  
+当前任务：P3.2 机器人 REST 接口实现（GET/POST/PUT/DELETE /robots + 状态时序）  
+最近完成：P3.1 机器人 Schemas + Repository（schemas/common.py + schemas/robot.py + repositories/robot.py + repositories/robot_state.py，18/18 自检全绿）（2026-05-02）  
+下一任务：P3.2 REST 接口实现（API_SPEC §2，含分页/过滤、code 唯一冲突 409、软删除）  
 
 ---
 
@@ -91,6 +91,68 @@
 ---
 
 ## 已完成任务
+
+### P3.1 — 机器人 Schemas + Repository（2026-05-02）
+
+- 任务：P3.1 机器人 Schemas + Repository（BUILD_ORDER.md §P3.1）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/schemas/common.py（新增）
+  - backend/app/schemas/robot.py（新增）
+  - backend/app/repositories/robot.py（新增）
+  - backend/app/repositories/robot_state.py（新增）
+- 新增内容：
+  - `schemas/common.py`（Pydantic v2，跨领域复用）：
+    - `Position`（lat/lng + 可选 altitude_m / heading_deg，Field 范围守卫 -90/90、-180/180、heading 0-360）
+    - `RobotCapability`（sensors/payloads 默认空 list 用 `Field(default_factory=list)` 避免 mutable default + max_speed_mps/max_battery_min/max_range_km/has_yolo/weight_kg）
+    - `Detection`（class_id 0-3 + class_name Literal 4 类 + confidence 0-1 + bbox 长度=4 + 可选 world_position）
+    - `VisionData`（frame_id + inference_time_ms + detections 列表）
+    - `SensorData`（temperature_c / humidity_pct / signal_dbm / vision，`ConfigDict(extra="allow")` 允许不同机型扩展）
+  - `schemas/robot.py`：
+    - `RobotBase`：code (max=50) + name (max=100) + type Literal["uav","ugv","usv"] + model 可选 (max=100) + capability + group_id 可选
+    - `RobotCreate`(=RobotBase) / `RobotUpdate`（4 字段全可选，code 与 type 不可变）
+    - `RobotRead`：+ id / is_active / created_at / updated_at，`ConfigDict(from_attributes=True)`
+    - `RobotStateRead`：id (int, BIGSERIAL) / robot_id / recorded_at / fsm_state Literal 5 态 / position (Position) / battery 0-100 / sensor_data (SensorData) / current_task_id 可选
+  - `repositories/robot.py` `RobotRepository(session)` 类（事务边界：只 add+flush，不 commit/rollback）：
+    - `save(robot) -> Robot`
+    - `find_by_id(robot_id) -> Robot | None`（用 session.get）
+    - `find_by_code(code) -> Robot | None`（确认范围内追加；seed 数据用 UAV-001/UGV-001/USV-001 类业务 code，P3.2 / 调试 / 测试都需要）
+    - `find_all(*, only_active: bool = True) -> list[Robot]`（按 code 升序稳定排序）
+    - `find_by_group(group_id) -> list[Robot]`（不在 repo 强制 active 过滤，留给 service）
+  - `repositories/robot_state.py` `RobotStateRepository(session)` 类：
+    - `append(state) -> RobotState`
+    - `find_latest_by_robot(robot_id) -> RobotState | None`（recorded_at DESC + LIMIT 1，命中 idx_robot_states_robot_time）
+    - `find_by_robot_in_window(robot_id, *, start_time=None, end_time=None, limit=100) -> list[RobotState]`（时间窗可选 + DESC + limit；**业务上限 1000 不在 repo 校验**，留给 service / API 层）
+- 设计决策：
+  - 公共类型独立放 `schemas/common.py`，与 CONVENTIONS §2.2 列出的"common.py（Position, TargetArea, etc.）"一致；本任务**只**新增 Robot/CV 域复用类型（Position / RobotCapability / Detection / VisionData / SensorData），不预先放入 task / auction / ws 域 schema
+  - Pydantic v2：所有模型用 `ConfigDict`，list 默认值用 `Field(default_factory=list)`；`SensorData` `extra="allow"` 与 DATA_CONTRACTS §5 严格一致
+  - Repository 事务边界：与 P2.2 `UserRepository` 风格统一——只 add + flush，commit/rollback 由 service / 测试控制；这样 P3.3 RobotAgent 在 1Hz 上报循环里可批量 commit
+  - `find_by_robot_in_window` 不做 limit 上限校验：repository 层只忠实把参数传给 SQL，让 GET /robots/{id}/states 在 service 守卫 ≤ 1000；避免分层职责泄漏
+  - `RobotRead.from_attributes = True` 与 ORM Robot 直接桥接（capability JSONB 字段虽然 ORM 是 dict，但 Pydantic v2 会用 RobotCapability 校验后产出强类型嵌套对象）
+- 测试验证（临时脚本 `backend/_p31_check.py`，验证后已删除，不入库）：
+  - [1] schema imports：Position / RobotCapability / SensorData / RobotCreate / RobotRead / RobotUpdate / RobotStateRead 全部 import 通过 ✓
+  - [2] RobotCreate 合法数据通过 ✓
+  - [3] RobotCreate 缺 type+capability → ValidationError 含 missing 字段 ✓
+  - [3b] RobotCreate type='space_drone' → 非法 Literal 拒绝 ✓
+  - [4.1] find_all(only_active=True) → 25 台，types={uav,ugv,usv} ✓
+  - [4.2] find_by_code('UAV-001') → 鹰眼-1，capability.has_yolo=True ✓
+  - [4.2b] find_by_code('NOT-EXIST-999') → None ✓
+  - [4.3] find_by_id(uav001.id) 还原同一对象 ✓
+  - [4.4] find_by_group(空中编队 Alpha id) → 10 台 UAV，code 范围 UAV-001..UAV-010 ✓
+  - [5] append RobotState（IDLE / position / battery=88.5 / sensor_data） + flush 拿到 BIGSERIAL id + recorded_at（DB server_default=now() 已生效）✓
+  - [5] find_latest_by_robot 拿回同一条 ✓
+  - [5b] RobotStateRead.model_validate(latest) 成功（fsm_state='IDLE', position.lat=30.2741, battery=88.5）✓
+  - [5c] find_by_robot_in_window(limit=10) 含本次写入 ✓
+  - [6] RobotRead.model_validate(uav001) → code='UAV-001', id 是 UUID ✓
+  - [6b] session.rollback() 后开新 session 复检 → robot_states 中无 UAV-001 记录（DB 干净，未污染）✓
+- 环境处理：
+  - 复用 P2.x 已就位的 backend/.venv（Python 3.11.9）+ DB_PORT=5433，无需新增依赖
+- Git 提交：
+  - commit message：feat: P3.1 robot schemas and repositories
+  - push 状态：待执行
+- 下一步建议：
+  - P3.2：实现 `app/api/v1/robots.py` 全部 7 路由（GET 列表+分页+过滤 / GET 单查嵌入最新 state / POST 含 code 重复 409 / PUT / DELETE 软删除 / GET states 时序+limit≤1000 守卫 / GET faults），以及 service 层处理 code 唯一冲突。注意 `POST /robots/{id}/recall` 留到 P3.6 联合 intervention 一起实现
 
 ### P2.6 — 统一错误处理（X-Request-Id + ErrorResponse + 兜底 500）（2026-05-02）
 
