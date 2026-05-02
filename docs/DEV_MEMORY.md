@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P2 认证 + 基础 API  
-当前任务：P2.1 配置与依赖注入  
-最近完成：P1.5 Seed 数据脚本（2026-05-02）  
-下一任务：P2.1 配置与依赖注入（app/core/config.py + db/session.py + core/security.py 完整版）  
+当前任务：P2.2 认证 Schemas + Repository  
+最近完成：P2.1 配置与依赖注入（2026-05-02）  
+下一任务：P2.2 认证 Schemas（LoginRequest / TokenResponse / CurrentUser）+ UserRepository  
 
 ---
 
@@ -91,6 +91,42 @@
 ---
 
 ## 已完成任务
+
+### P2.1 — 配置与依赖注入（2026-05-02）
+
+- 任务：P2.1 配置与依赖注入
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/db/session.py（新增）
+  - backend/app/core/security.py（扩展，新增 JWT 编/解码）
+- 新增内容：
+  - `db/session.py`：async engine 单例（pool_pre_ping=True）+ `async_session_maker`（expire_on_commit=False）+ `get_db()` FastAPI 依赖
+  - `security.py` 新增：
+    - `create_access_token(user_id, roles)` — payload `{sub, type=access, roles, iat, exp}`，TTL 24h
+    - `create_refresh_token(user_id)` — payload `{sub, type=refresh, iat, exp}`，TTL 7d
+    - `decode_token(token)` — 直接抛 jose 原生异常，由 P2.4 中间件翻译为 `401_AUTH_TOKEN_EXPIRED_001` / `401_AUTH_TOKEN_INVALID_001`
+    - `access_token_expires_in()` 辅助函数（用于 TokenResponse.expires_in）
+    - 常量 `TOKEN_TYPE_ACCESS / TOKEN_TYPE_REFRESH`
+  - 算法 HS256；secret 来自 `settings.jwt_secret`
+- 设计决策：
+  - JWT payload 只放 `sub` (user_id) + `roles`，不放 `username/display_name`（CONVENTIONS §11 安全约定）
+  - Refresh token 同样用 JWT 对称加密（无 DB 黑名单表，logout 由前端清 token，符合 BUILD_ORDER P2.5）
+  - `decode_token` 不在此层翻译错误码，保留原生异常给 P2.4 中间件
+- 环境处理：
+  - venv 缺装 `python-jose[cryptography]`，已安装（连带 cryptography / cffi / rsa / ecdsa / pyasn1 / pycparser / six）
+- 测试验证（自检脚本）：
+  - imports OK ✓
+  - JWT roundtrip OK，access expires_in=86400s ✓
+  - 密码 hash + verify OK，bcrypt $2b$12$ ✓
+  - `get_db()` 可执行 `SELECT 1` 并看到 seed 数据（active robots = 25）✓
+  - 篡改 token → JWTError ✓
+  - 过期 token → ExpiredSignatureError ✓
+- Git 提交：
+  - commit message：feat: P2.1 async db session + JWT helpers
+  - push 状态：待执行
+- 下一步建议：
+  - P2.2：在 `app/schemas/auth.py` 实现 LoginRequest / TokenResponse / RefreshTokenRequest / CurrentUser（DATA_CONTRACTS §5）；在 `app/repositories/user.py` 实现 `get_by_username / get_by_id / save`
 
 ### P1.5 — Seed 数据脚本（2026-05-02）
 
