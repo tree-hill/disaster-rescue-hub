@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P3.3 robot agent and manager skeleton
-- Commit hash：（push 后回填）
+- Commit hash：0a5d77c
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
