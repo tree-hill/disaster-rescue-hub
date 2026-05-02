@@ -8,9 +8,9 @@
 ## 当前阶段
 
 当前阶段：P3 机器人模块  
-当前任务：P3.2 机器人 REST 接口实现  
+当前任务：P3.3 RobotAgent 协程基础  
 任务来源：docs/BUILD_ORDER.md  
-备注：P3.1 完成（schemas/common.py + schemas/robot.py + repositories/robot.py + repositories/robot_state.py，18/18 自检全绿，rollback 不污染 DB），进入 P3.2 实现 API_SPEC §2 全部 /robots 路由  
+备注：P3.2 完成（6 路由 + RobotService + 分页 + 软删除 + 409 active-task 守卫；seed.py upsert_role 改幂等并补 commander 的 robot:read；18/18 httpx ASGITransport 自检全绿），进入 P3.3 实现 RobotAgent 主循环 + AgentManager  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P3.2 机器人 REST 接口实现：`app/api/v1/robots.py` 全部 7 路由（GET 列表分页过滤 / GET 单查嵌入最新 state / POST 处理 code 唯一 409 / PUT / DELETE 软删除 / GET /states 守卫 limit≤1000 / GET /faults）；`POST /robots/{id}/recall` 留到 P3.6 联合 intervention
+- [ ] P3.3 RobotAgent 协程基础：`app/agents/robot_agent.py`（1Hz 主循环 + FSM 字典）+ `app/agents/manager.py`（AgentManager 管理 25 协程生命周期）
 
 ### In Progress
 
@@ -71,6 +71,7 @@
 - [x] P2.5 其他认证接口：POST /auth/refresh（AuthService.refresh）+ GET /auth/me + POST /auth/logout（204，response_class=Response，简化版无黑名单），httpx ASGITransport 10/10 自检（2026-05-02，Claude Code）
 - [x] P2.6 统一错误处理：纯 ASGI `RequestIdMiddleware`（X-Request-Id 透传/生成）+ `ErrorResponse` schema + BusinessError/RequestValidationError/Exception 三大 handler，兜底 500 sanitization 不暴露内部错误细节，6/6 自检（2026-05-02，Claude Code）
 - [x] P3.1 机器人 Schemas + Repository：`schemas/common.py`（Position/RobotCapability/Detection/VisionData/SensorData，跨领域复用）+ `schemas/robot.py`（RobotBase/Create/Update/Read/StateRead，Pydantic v2）+ `repositories/robot.py`（save/find_by_id/find_by_code/find_all/find_by_group，事务边界=add+flush）+ `repositories/robot_state.py`（append/find_latest_by_robot/find_by_robot_in_window，limit 上限不在 repo 校验），18/18 自检全绿、rollback 不污染 DB（2026-05-02，Claude Code）
+- [x] P3.2 机器人 REST 接口实现：`schemas/pagination.py`（泛型 Page[T]）+ `schemas/robot.py` 追加 `RobotDetailRead` + `repositories/robot.py` 追加 `find_paginated`（type/group_id/search 过滤 + ILIKE）+ `services/robot_service.py`（404/409 错误工厂 + IntegrityError 翻译 + PATCH 语义 update + active task 守卫的 soft_delete）+ `api/v1/robots.py` 6 路由（GET 列表/详情/states + POST/PUT/DELETE，权限分 robot:read 和 robot:manage，limit le=1000 路由层 422）+ seed.py upsert_role 改幂等并补 commander 的 robot:read，13 项 18 断言 httpx ASGITransport 全绿（2026-05-03，Claude Code）
 
 ---
 

@@ -61,6 +61,7 @@ ROLES_DEF = [
             "task:create",
             "task:cancel",
             "task:update",
+            "robot:read",
             "robot:reassign",
             "robot:recall",
             "robot:manage",
@@ -198,6 +199,12 @@ def build_robots_def() -> list[dict]:
 # ============================================================
 
 async def upsert_role(session: AsyncSession, defn: dict) -> str:
+    """upsert：name 冲突时同步更新 description / permissions。
+
+    permissions 字段会随契约迭代（如 P3.2 给 commander 补 robot:read），
+    重跑 seed.py 必须能把已存在角色的权限同步刷新到最新定义，
+    否则种子数据会与 BUSINESS_RULES / API_SPEC 漂移。
+    """
     stmt = (
         pg_insert(Role.__table__)
         .values(
@@ -205,7 +212,13 @@ async def upsert_role(session: AsyncSession, defn: dict) -> str:
             description=defn["description"],
             permissions=defn["permissions"],
         )
-        .on_conflict_do_nothing(index_elements=["name"])
+        .on_conflict_do_update(
+            index_elements=["name"],
+            set_={
+                "description": defn["description"],
+                "permissions": defn["permissions"],
+            },
+        )
     )
     await session.execute(stmt)
     res = await session.execute(select(Role.id).where(Role.name == defn["name"]))

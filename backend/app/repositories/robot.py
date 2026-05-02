@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.robot import Robot
@@ -52,3 +52,49 @@ class RobotRepository:
         """
         stmt = select(Robot).where(Robot.group_id == group_id).order_by(Robot.code.asc())
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def find_paginated(
+        self,
+        *,
+        type_: str | None = None,
+        group_id: UUID | None = None,
+        search: str | None = None,
+        only_active: bool = True,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Robot], int]:
+        """分页查询，支持 type / group_id / search 过滤。
+
+        - search:对 code 与 name 做 ILIKE '%search%' 模糊匹配
+        - only_active=True 仅返回 is_active=TRUE
+        - 返回 (items, total)；total 是过滤条件下的总数（用于前端分页器）
+        - 排序：created_at DESC（与 API_SPEC §0.6 默认一致）
+        """
+        filters = []
+        if only_active:
+            filters.append(Robot.is_active.is_(True))
+        if type_ is not None:
+            filters.append(Robot.type == type_)
+        if group_id is not None:
+            filters.append(Robot.group_id == group_id)
+        if search:
+            pattern = f"%{search}%"
+            filters.append(or_(Robot.code.ilike(pattern), Robot.name.ilike(pattern)))
+
+        # total
+        count_stmt = select(func.count()).select_from(Robot)
+        for f in filters:
+            count_stmt = count_stmt.where(f)
+        total = (await self.session.execute(count_stmt)).scalar_one()
+
+        # items
+        stmt = select(Robot)
+        for f in filters:
+            stmt = stmt.where(f)
+        stmt = (
+            stmt.order_by(Robot.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        items = list((await self.session.execute(stmt)).scalars().all())
+        return items, total

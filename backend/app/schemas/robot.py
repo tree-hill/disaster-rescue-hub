@@ -67,3 +67,13 @@ class RobotStateRead(BaseModel):
     battery: float = Field(..., ge=0, le=100)
     sensor_data: SensorData
     current_task_id: UUID | None = None
+
+
+class RobotDetailRead(RobotRead):
+    """GET /robots/{id} 的扩展响应：在 RobotRead 基础上嵌入最新状态。
+
+    对照 API_SPEC §2：「200 响应：RobotRead + 嵌入最新 RobotStateRead」。
+    若该机器人尚未上报过状态（robot_states 表无记录），latest_state 为 null。
+    """
+
+    latest_state: RobotStateRead | None = None

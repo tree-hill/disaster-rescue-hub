@@ -24,6 +24,39 @@
 
 ## 提交记录
 
+### 2026-05-03 — P3.2
+
+- 任务：P3.2 机器人 REST 接口实现
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P3.2 robot REST endpoints
+- Commit hash：（push 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/schemas/pagination.py（新增）：泛型 `Page[T]`，所有 List 接口复用
+  - backend/app/schemas/robot.py（修改）：追加 `RobotDetailRead(RobotRead)`，含 `latest_state: RobotStateRead | None`
+  - backend/app/repositories/robot.py（修改）：追加 `find_paginated(*, type_, group_id, search, only_active, page, page_size)`，OR(code ILIKE, name ILIKE) 模糊匹配 + created_at DESC 排序 + offset/limit
+  - backend/app/services/robot_service.py（新增）：`RobotService` 类，封装 list_paginated / get_with_latest_state / list_states / create / update / soft_delete；IntegrityError → `409_ROBOT_CODE_DUPLICATE_001`；task_assignments 检查 → `409_ROBOT_HAS_ACTIVE_TASK_001`；`404_ROBOT_NOT_FOUND_001` 错误工厂
+  - backend/app/api/v1/robots.py（新增）：6 路由（GET 列表 + GET 详情 + POST + PUT + DELETE + GET /states），权限 robot:read / robot:manage 分层；limit Query(le=1000) 自动 422
+  - backend/app/api/router.py（修改）：注册 v1_robots.router
+  - scripts/seed.py（修改）：commander 权限补 `robot:read`；`upsert_role` 改 `ON CONFLICT DO UPDATE SET description=…, permissions=…`（重跑可同步刷新已存在角色，避免契约迭代后种子数据漂移）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 设计决策：
+  - 分页放在 repo 层（CONVENTIONS §1.2 反模式：service 不写 SQL）
+  - status（=fsm_state）过滤暂不实现，留 P3.5 WS 上线后用 service 内存缓存做
+  - PUT 用 PATCH 语义（`model_dump(exclude_unset=True)`），区分"未传"与"显式 None"
+  - limit 上限校验在路由层 `Query(le=1000)`，复用 P2.6 全局 422 handler
+  - DELETE 默认 only_active 列表不可见；`include_inactive=true` 显式可见软删条目
+  - `POST /robots/{id}/recall` 留 P3.6；`GET /robots/{id}/faults` BUILD_ORDER P3 全程未列，跳过
+- 自检（13 项 18 断言全绿，临时 backend/_p32_check.py 验证后已删除）：
+  - 401（无 token）/ 403（admin 无 robot:read）/ 201（POST）/ 409（重复 code）/ 200（默认分页 total=26）/ 200（type=uav total=11）/ 200（group_id=Alpha total=10）/ 200（GET detail with latest_state=null）/ 200（PUT 改名）/ 204（DELETE 软删）/ 默认列表不见 / include_inactive=true 仍可见 is_active=false / 409（DELETE 有 active task → 409_ROBOT_HAS_ACTIVE_TASK_001）/ 422（limit=2000 → 422_VALIDATION_FAILED_001）/ 200（limit=10）/ 404（不存在 UUID）
+  - 测试数据 finally 块硬删（task_assignments / tasks / robots），不污染 DB
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P3.1
 
 - 任务：P3.1 机器人 Schemas + Repository

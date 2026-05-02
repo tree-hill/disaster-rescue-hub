@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P3 机器人模块  
-当前任务：P3.2 机器人 REST 接口实现（GET/POST/PUT/DELETE /robots + 状态时序）  
-最近完成：P3.1 机器人 Schemas + Repository（schemas/common.py + schemas/robot.py + repositories/robot.py + repositories/robot_state.py，18/18 自检全绿）（2026-05-02）  
-下一任务：P3.2 REST 接口实现（API_SPEC §2，含分页/过滤、code 唯一冲突 409、软删除）  
+当前任务：P3.3 RobotAgent 协程基础（asyncio 1Hz 主循环 + AgentManager + FSM 状态机）  
+最近完成：P3.2 机器人 REST 接口实现（6 路由 + RobotService + 分页 + 软删除 + 409 active-task 守卫，18/18 httpx ASGITransport 自检全绿）+ seed.py 给 commander 补 robot:read 并改 roles upsert 幂等（2026-05-03）  
+下一任务：P3.3 `app/agents/robot_agent.py`（asyncio 主循环 + FSM）+ `app/agents/manager.py`（AgentManager）  
 
 ---
 
@@ -91,6 +91,75 @@
 ---
 
 ## 已完成任务
+
+### P3.2 — 机器人 REST 接口实现（2026-05-03）
+
+- 任务：P3.2 REST 接口实现（BUILD_ORDER.md §P3.2）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/schemas/pagination.py（新增）
+  - backend/app/schemas/robot.py（修改：追加 RobotDetailRead）
+  - backend/app/repositories/robot.py（修改：追加 find_paginated）
+  - backend/app/services/robot_service.py（新增）
+  - backend/app/api/v1/robots.py（新增）
+  - backend/app/api/router.py（修改：注册 robots router）
+  - scripts/seed.py（修改：commander 加 robot:read；upsert_role 改 ON CONFLICT DO UPDATE 幂等）
+- 新增内容：
+  - `schemas/pagination.py`：泛型 `Page[T]`(items/total/page/page_size)，`ConfigDict(arbitrary_types_allowed=True)` 兼容 Pydantic v2 + Generic
+  - `schemas/robot.py` 追加 `RobotDetailRead(RobotRead)`：嵌入 `latest_state: RobotStateRead | None`，对应 API_SPEC §2「GET /robots/{id} → RobotRead + 嵌入最新 RobotStateRead」
+  - `RobotRepository.find_paginated(*, type_, group_id, search, only_active, page, page_size) -> (items, total)`：
+    - search 用 `OR(code ILIKE, name ILIKE)` 模糊匹配
+    - only_active=True 默认仅返回 is_active=TRUE
+    - 排序 created_at DESC（API_SPEC §0.6 默认）
+  - `services/robot_service.py` `RobotService(session)` 类：
+    - `list_paginated()` / `get_with_latest_state()` / `list_states()`（404 守卫）
+    - `create()`：捕获 IntegrityError → `409_ROBOT_CODE_DUPLICATE_001`
+    - `update()`：用 `model_dump(exclude_unset=True)` 实现 PATCH 语义，区分"传 None 解除关联" vs "未传字段保留"
+    - `soft_delete()`：set is_active=False；先查 task_assignments WHERE robot_id AND is_active=TRUE，命中 → `409_ROBOT_HAS_ACTIVE_TASK_001`
+    - 错误工厂函数 `_not_found / _code_duplicate / _has_active_task`（含 details 数组，对照 BUSINESS_RULES §6.8）
+  - `api/v1/robots.py` 6 路由：
+    - GET /robots（分页 + type/group_id/search/include_inactive）
+    - GET /robots/{id}（RobotDetailRead 含 latest_state）
+    - POST /robots（201 + RobotRead）
+    - PUT /robots/{id}（PATCH 语义）
+    - DELETE /robots/{id}（204 软删）
+    - GET /robots/{id}/states（limit∈[1,1000]，超出由 FastAPI 转 RequestValidationError → 422_VALIDATION_FAILED_001）
+  - seed.py：commander 权限补 robot:read（原本只有 manage/recall/reassign，缺读权限会让 GET /robots 直接 403）；`upsert_role` 改为 `ON CONFLICT DO UPDATE SET description=…, permissions=…`，重跑可同步刷新已存在角色
+- 设计决策：
+  - **分页放在 repo 层**（CONVENTIONS §1.2 反模式：service 不写 SQL）；service 只组装参数 + 错误翻译
+  - **status 过滤暂不做**（需 join robot_states 取最新行；P3.5 WS 上线后用 service 内存缓存更顺手），仅支持 type/group_id/search/page/page_size/include_inactive
+  - **`POST /robots/{id}/recall` 与 `GET /robots/{id}/faults` 不在本任务**：BUILD_ORDER §P3.2 字面只列 6 路由，recall 留 P3.6 联合 intervention，faults 表的接口 BUILD_ORDER P3 全程未列
+  - **PUT 用 PATCH 语义**：`model_dump(exclude_unset=True)` 区分"未传"与"显式 None"，避免误清空字段；code 与 type 不在 RobotUpdate 中（数据库 UNIQUE+CHECK，本就不可变）
+  - **limit 上限 1000 在路由层 `Query(le=1000)` 守卫**：FastAPI 自动转 RequestValidationError，沿用 P2.6 的 422_VALIDATION_FAILED_001 全局 handler，repo 层不再重复校验
+  - **DELETE 后 include_inactive=False 列表不可见**：默认 only_active=True 是产品体感最直觉的列表行为；管理员可显式带 `include_inactive=true` 看到软删条目
+  - **seed roles upsert 改幂等更新**：原 ON CONFLICT DO NOTHING 让权限定义一旦写入就再难修，与未来契约迭代必然冲突；改为 DO UPDATE 后重跑 seed 即可同步最新权限
+- 测试验证（临时 `backend/_p32_check.py`，httpx + ASGITransport，验证后已删除不入库）：
+  - [1] 401:GET /robots 无 token → `401_AUTH_TOKEN_INVALID_001` ✓
+  - [2] 403:admin001（permissions=user:manage+system:admin，**无** robot:read）GET /robots → `403_AUTH_PERMISSION_DENIED_001` ✓
+  - [3] 201:commander 创建 TEST-CLAUDE-001（uav，has_yolo=true）→ RobotRead，is_active=true ✓
+  - [4] 409:重复 code POST → `409_ROBOT_CODE_DUPLICATE_001`（IntegrityError → 翻译）✓
+  - [5] 200:默认分页 → total=26（25 seed + 1 test），page=1，page_size=20，items.len=20 ✓
+  - [6] 200:?type=uav&page_size=100 → total=11（10 seed UAV + 1 test），全部 type=uav ✓
+  - [7] 200:?group_id=空中编队 Alpha → total=10 ✓
+  - [8] 200:GET /robots/{uav-001} → RobotDetailRead，latest_state=null（系统未上报过）✓
+  - [9] 200:PUT name='测试机-改名' → 200，name 已更新 ✓
+  - [10] 204:DELETE 软删 → 204；默认 search 不见；include_inactive=true 仍可见且 is_active=false ✓
+  - [11] 409:UGV-001 已有 active task_assignment（raw SQL 注入测试 task + assignment）DELETE → `409_ROBOT_HAS_ACTIVE_TASK_001` ✓
+  - [12] 422:GET /states?limit=2000 → `422_VALIDATION_FAILED_001`（FastAPI Query le=1000 守卫）；limit=10 正常返回 0 条 ✓
+  - [13] 404:GET /robots/{ghost UUID} → `404_ROBOT_NOT_FOUND_001` ✓
+- 数据清理（finally 块硬删，不污染 DB）：
+  - DELETE FROM task_assignments WHERE task_id IN (SELECT id FROM tasks WHERE code='T-TEST-CLAUDE-001')
+  - DELETE FROM tasks WHERE code='T-TEST-CLAUDE-001'
+  - DELETE FROM robots WHERE code='TEST-CLAUDE-001'
+- 环境处理：
+  - seed.py 重跑（`backend\.venv\Scripts\python.exe scripts\seed.py`）让 commander 拿到 robot:read 权限；幂等 upsert 验证：roles 表 commander.permissions 含 robot:read
+- Git 提交：
+  - commit message：feat: P3.2 robot REST endpoints
+  - push 状态：待执行
+- 下一步建议：
+  - P3.3：实现 `app/agents/robot_agent.py`（RobotAgent 类 + 1Hz 主循环 + ROBOT_FSM_TRANSITIONS 字典 BUSINESS_RULES §2.2）+ `app/agents/manager.py`（AgentManager 管理 25 个协程生命周期）
+  - 注意 RobotAgent 主循环不能阻塞事件循环；耗时操作（如未来的 YOLO 推理）必须 `asyncio.to_thread`
 
 ### P3.1 — 机器人 Schemas + Repository（2026-05-02）
 
