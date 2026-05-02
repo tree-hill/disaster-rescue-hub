@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P3.2 robot REST endpoints
-- Commit hash：（push 后回填）
+- Commit hash：c79c1c7
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
