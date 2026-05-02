@@ -24,6 +24,23 @@
 
 ## 提交记录
 
+### 2026-05-02 — P1.4
+
+- 任务：P1.4 修复数据库 DESC 索引方向
+- 工具：Claude Code
+- 分支：main
+- Commit message：fix: P1.4 correct database index sort order
+- Commit hash：（待填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/migrations/versions/34b9faaa8fb0_fix_desc_indexes.py（新增）：12 个索引 drop/recreate ASC→DESC
+  - docs/DEV_MEMORY.md、TASK_BOARD.md、GIT_LOG.md：更新记录
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P1.2/P1.3 契约一致性修复
 
 - 任务：P1.2/P1.3 契约一致性修复（Codex 审查后）

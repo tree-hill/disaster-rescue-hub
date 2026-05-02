@@ -8,9 +8,9 @@
 ## 当前阶段
 
 当前阶段：P1 数据层  
-当前任务：P1.4 触发器与索引（GIN 索引补充；触发器已在 P1.3 完成）  
+当前任务：P1.5 Seed 数据脚本  
 任务来源：docs/BUILD_ORDER.md  
-备注：建议 Codex 先审查 P1.2/P1.3 再推进 P1.4  
+备注：P1.4 已完成，DB 中 12 个索引已修正为 DESC 方向  
 
 ---
 
@@ -44,9 +44,7 @@
 
 ### To Do
 
-- [ ] Codex 复审：P1.2/P1.3 修复结果（server_default、Index 声明、DESC 方向）
-- [ ] P1.4 触发器与索引（触发器和 GIN ORM 声明已完成；需新增 migration 修复 DB 中的 DESC 索引方向）
-- [ ] P1.5 Seed 数据脚本
+- [ ] P1.5 Seed 数据脚本（scripts/seed.py：3 角色 + 2 用户 + 25 机器人 + 3 编队 + 1 场景）
 
 ### In Progress
 
@@ -64,6 +62,7 @@
 - [x] P1.3 第一次迁移（2026-05-02，Claude Code）
 - [x] P1.3 修复与补验：Python 3.11 venv + 端口 5433 + asyncpg env.py（2026-05-02，Claude Code）
 - [x] P1.2/P1.3 契约一致性修复：server_default + 删冗余UniqueConstraint + 补28个Index + migration DESC（2026-05-02，Claude Code）
+- [x] P1.4 触发器与索引：新建 migration 34b9faaa8fb0，修正 DB 中 12 个 ASC→DESC 索引；补验触发器 4 条 + GIN 索引 4 个（2026-05-02，Claude Code）
 
 ---
 

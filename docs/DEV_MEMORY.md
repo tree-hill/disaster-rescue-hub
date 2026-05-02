@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P1 数据层  
-当前任务：P1.4 触发器与索引（建议 Codex 复审 P1.2/P1.3 修复后再推进）  
-最近完成：P1.2/P1.3 契约一致性修复（2026-05-02）  
-下一任务：P1.4 GIN 索引（触发器已在 P1.3 完成；ORM 中已补 GIN 索引声明）  
+当前任务：P1.5 Seed 数据脚本  
+最近完成：P1.4 修复数据库 DESC 索引方向（2026-05-02）  
+下一任务：P1.5 Seed 数据脚本（scripts/seed.py）  
 
 ---
 
@@ -37,6 +37,14 @@
 - **迁移驱动**：asyncpg（异步）。`migrations/env.py` 已恢复为 asyncpg 模式，禁止引入 psycopg2-binary。
 
 ## 已知设计偏差
+
+### 偏差 2：触发器命名 set_timestamp_blackboard_entries（低风险）
+
+- **位置**：`backend/migrations/versions/26cff1e230e8_init_schema.py`
+- **DATA_CONTRACTS.md 原意**：触发器名为 `set_timestamp_blackboard`
+- **实际实现**：`set_timestamp_blackboard_entries`（使用了表全名 `blackboard_entries`）
+- **影响**：触发器功能完全正常（BEFORE UPDATE 触发 trigger_set_timestamp 函数），仅名称不同
+- **处理**：接受偏差，不改动已执行数据库的触发器名。
 
 ### 偏差 1：idx_blackboard_active 使用全量索引
 
@@ -82,6 +90,41 @@
 ---
 
 ## 已完成任务
+
+### P1.4 — 修复数据库 DESC 索引方向（2026-05-02）
+
+- 任务：P1.4 触发器与索引（DESC 方向修复 + 补验）
+- 执行工具：Claude Code
+- 修改类型：fix
+- 涉及文件：
+  - backend/migrations/versions/34b9faaa8fb0_fix_desc_indexes.py（新增）
+- 修复内容：
+  - 新建 Alembic migration `34b9faaa8fb0`，down_revision = `26cff1e230e8`
+  - 12 个索引从 ASC 修正为 DESC：
+    - `idx_tasks_status`：(status, created_at DESC)
+    - `idx_robot_states_robot_time`：(robot_id, recorded_at DESC)
+    - `idx_robot_states_time`：(recorded_at DESC)
+    - `idx_faults_robot`：(robot_id, occurred_at DESC)
+    - `idx_faults_unresolved`：(occurred_at DESC) WHERE resolved_at IS NULL
+    - `idx_auctions_task`：(task_id, started_at DESC)
+    - `idx_bids_auction`：(auction_id, bid_value DESC)
+    - `idx_interventions_user`：(user_id, occurred_at DESC)
+    - `idx_interventions_time`：(occurred_at DESC)
+    - `idx_alerts_unack`：(raised_at DESC) WHERE acknowledged_at IS NULL AND is_ignored = FALSE
+    - `idx_alerts_severity`：(severity, raised_at DESC)
+    - `idx_replay_created`：(created_at DESC)
+- 补验结果：
+  - 触发器：4 条 ✓（set_timestamp_users/robots/tasks/blackboard_entries）
+  - GIN 索引：4 个 ✓（idx_robots_capability/idx_robot_states_sensor/idx_tasks_capabilities/idx_blackboard_value）
+  - alembic current：34b9faaa8fb0 (head) ✓
+  - 12 个 DESC 索引 pg_indexes 查询全部包含 DESC 关键字 ✓
+- 记录偏差：
+  - 触发器命名偏差：`set_timestamp_blackboard_entries` vs DATA_CONTRACTS 的 `set_timestamp_blackboard`（接受，见"已知设计偏差"）
+- Git 提交：
+  - commit message：fix: P1.4 correct database index sort order
+  - push 状态：已 push
+- 下一步建议：
+  - P1.5 Seed 数据脚本（scripts/seed.py），创建 3 角色 + 2 用户 + 25 机器人 + 3 编队 + 1 场景
 
 ### P1.2/P1.3 契约一致性修复（2026-05-02）
 
