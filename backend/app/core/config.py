@@ -37,8 +37,10 @@ class Settings(BaseSettings):
     app_log_level: str = "INFO"
 
     # Mock
-    mock_agents_enabled: bool = True
-    mock_agents_tick_hz: int = 1
+    # 默认 False：避免 pytest / 自检脚本启动 FastAPI 时自动起 25 个后台协程。
+    # 本地开发若想让 Agent 跑起来，在 backend/.env 显式 MOCK_AGENTS_ENABLED=true。
+    mock_agents_enabled: bool = False
+    mock_agents_tick_hz: float = 1.0
 
 
 settings = Settings()

@@ -13,3 +13,9 @@ JWT_ACCESS_TTL_HOURS = 24
 JWT_REFRESH_TTL_DAYS = 7
 LOGIN_FAIL_LOCKOUT_THRESHOLD = 5  # 连续失败 5 次触发锁定
 LOGIN_LOCKOUT_DURATION_MIN = 15   # 锁定 15 分钟
+
+# === 故障检测 ===
+# BUSINESS_RULES §2.2.2：battery <= 5% 触发 low_battery（critical）
+FAULT_BATTERY_THRESHOLD = 5.0
+# 心跳超时（秒）；P3.4 实现 comm_lost 时使用
+HEARTBEAT_TIMEOUT_SEC = 15

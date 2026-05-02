@@ -1,24 +1,47 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.agents.manager import get_agent_manager
 from app.api.router import api_router
+from app.core.config import settings
 from app.core.exceptions import BusinessError
 from app.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """启动时按需拉起 25 个 RobotAgent；关闭时优雅停止。
+
+    由 settings.mock_agents_enabled 控制（默认 False）：
+    - 自检脚本 / pytest 不会自动起后台协程
+    - 本地开发想看 Agent 跑：在 backend/.env 显式 MOCK_AGENTS_ENABLED=true
+    """
+    if settings.mock_agents_enabled:
+        await get_agent_manager().start_all()
+    try:
+        yield
+    finally:
+        if settings.mock_agents_enabled:
+            await get_agent_manager().stop_all()
+
 
 app = FastAPI(
     title="Disaster Rescue Hub API",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # 中间件按 add_middleware 顺序：先加的在内层。这里我们希望

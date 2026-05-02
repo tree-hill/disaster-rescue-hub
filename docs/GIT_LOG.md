@@ -24,6 +24,44 @@
 
 ## 提交记录
 
+### 2026-05-03 — P3.3
+
+- 任务：P3.3 RobotAgent 协程基础
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P3.3 robot agent and manager skeleton
+- Commit hash：（push 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/agents/__init__.py（新增）
+  - backend/app/agents/robot_agent.py（新增）：`ROBOT_FSM_TRANSITIONS` 字典严格抄 BUSINESS_RULES §2.2.3 + `RobotAgent` 类（__init__ + from_db + transit 守卫 + _check_faults battery≤5 + _tick + run 1Hz 主循环用 stop_event 替代 sleep + stop()）
+  - backend/app/agents/manager.py（新增）：`AgentManager` 单例 + start_all 加载 active robots → asyncio.create_task + stop_all 用 stop_event + asyncio.gather + 超时 cancel 兜底 + reset_for_tests
+  - backend/app/core/constants.py（修改）：新增 FAULT_BATTERY_THRESHOLD=5.0 + HEARTBEAT_TIMEOUT_SEC=15
+  - backend/app/core/config.py（修改）：mock_agents_enabled 默认 True → False（避免 pytest/自检自动起 25 协程）；tick_hz int → float
+  - backend/app/main.py（修改）：FastAPI `@asynccontextmanager async def lifespan(_app)` 闭环 startup/shutdown，仅在 settings.mock_agents_enabled=True 时调用 start_all/stop_all
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 设计决策：
+  - P3.3 不写 robot_states 表（P3.4 才写）：BUILD_ORDER 字面 P3.4 才说"状态变化时写表"
+  - mock_agents_enabled 默认 False：自检 / pytest 启动 FastAPI 不自动起后台协程；本地开发想看 Agent 跑就在 backend/.env 显式开启
+  - 故障检测仅 battery（P3.4 补 sensor_error / comm_lost / 概率注入）
+  - stop_all 用 stop_event 而非 task.cancel：CancelledError 在 sleep 中被抛会触发 try/finally 中的 await，反而拖慢；stop_event.set() 让循环主动 break 更优雅
+  - 单 tick 异常仅 logger.exception：P3.4 引入 DB/WS 后单次故障不应让协程整体死亡
+  - 用 Event.wait 替代 sleep：stop() 可立即唤醒等待中的协程
+- 自检（14 项断言全绿，临时 backend/_p33_check.py 验证后已删除）：
+  - FSM 字典与 BUSINESS_RULES §2.2.3 完全一致
+  - from_db(UAV-001) → code/type/fsm_state=IDLE/battery=100/position=CENTER/has_yolo=True
+  - 合法 transit 链 IDLE→BIDDING→EXECUTING→RETURNING→IDLE 4 步全过
+  - 非法 transit 拒绝：IDLE→EXECUTING / UNKNOWN 目标 / FAULT→BIDDING；FAULT→IDLE 唯一允许
+  - _check_faults：battery=100/5.1→None；5.0/4.0→'low_battery'；_tick 自动 transit('FAULT')
+  - AgentManager.start_all 启动 25，0.5s 内 tick_count min=8 max=9（tick_hz=20）
+  - stop_all 0.000s 优雅退出，list_agents=[]
+  - lifespan 双分支：False 跳过 start_all；True 启停闭环（25→0），直接测 async context manager（httpx ASGITransport 默认不触发 lifespan）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-03 — P3.2
 
 - 任务：P3.2 机器人 REST 接口实现

@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P3 机器人模块  
-当前任务：P3.3 RobotAgent 协程基础（asyncio 1Hz 主循环 + AgentManager + FSM 状态机）  
-最近完成：P3.2 机器人 REST 接口实现（6 路由 + RobotService + 分页 + 软删除 + 409 active-task 守卫，18/18 httpx ASGITransport 自检全绿）+ seed.py 给 commander 补 robot:read 并改 roles upsert 幂等（2026-05-03）  
-下一任务：P3.3 `app/agents/robot_agent.py`（asyncio 主循环 + FSM）+ `app/agents/manager.py`（AgentManager）  
+当前任务：P3.4 Mock 行为实现（IDLE 不动 / EXECUTING 朝目标 1m·s / 电量 0.5% per tick / 写 robot_states + WS）  
+最近完成：P3.3 RobotAgent 协程基础（FSM 字典 + transit 守卫 + 1Hz 主循环 + AgentManager start/stop_all + lifespan 集成 + battery≤5 故障检测，14/14 自检全绿）（2026-05-03）  
+下一任务：P3.4 Mock 行为：IDLE 状态不变；EXECUTING 朝 current_task 目标移动 1m/s 且电量 -0.5%/tick；状态变化时写 robot_states + WS（WS 在 P3.5 落地，P3.4 先打钩子）  
 
 ---
 
@@ -91,6 +91,69 @@
 ---
 
 ## 已完成任务
+
+### P3.3 — RobotAgent 协程基础 + AgentManager + lifespan（2026-05-03）
+
+- 任务：P3.3 RobotAgent 协程基础（BUILD_ORDER §P3.3）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/agents/__init__.py（新增）
+  - backend/app/agents/robot_agent.py（新增）
+  - backend/app/agents/manager.py（新增）
+  - backend/app/core/constants.py（修改：新增故障检测常量）
+  - backend/app/core/config.py（修改：mock_agents_enabled 默认改 False，tick_hz 改 float）
+  - backend/app/main.py（修改：FastAPI lifespan 集成）
+- 新增内容：
+  - `agents/robot_agent.py`：
+    - `ROBOT_FSM_TRANSITIONS` 字典严格抄 BUSINESS_RULES §2.2.3（5 状态 + 转移集）；`VALID_FSM_STATES` 由字典 keys 派生
+    - `FSMTransitionError(ValueError)`：非法 FSM 转移异常
+    - `RobotAgent` 类：
+      * `__init__`：静态身份（robot_id/code/type/capability）+ 动态状态（fsm_state/position/battery/current_task_id）+ 运行控制（tick_hz/_stop_event/tick_count/last_heartbeat_at）；非法初始 fsm_state 或 tick_hz≤0 抛错
+      * `from_db(session, robot_id, *, tick_hz=1.0)` 类方法：用 `RobotRepository.find_by_id` 加载，`LookupError` 当机器人不存在
+      * `transit(target, *, reason="")`：违反 ROBOT_FSM_TRANSITIONS 抛 FSMTransitionError，structlog 记录 from→to+reason
+      * `_check_faults()`：**P3.3 仅实现 battery≤FAULT_BATTERY_THRESHOLD（=5）→ 'low_battery'**，sensor_error / comm_lost / 概率注入留 P3.4
+      * `_tick()`：tick_count++ + last_heartbeat_at + 故障检测自动 transit('FAULT')
+      * `run()`：while not _stop_event.is_set() 循环，单 tick 异常仅 logger.exception 不让协程死亡（毕设场景：mock 行为以后会引入更多分支，避免一次失败拉宕整个 manager）；用 `asyncio.wait_for(_stop_event.wait(), timeout=interval)` 替代 sleep —— stop() 可立即解除等待，比 sleep+cancel 更优雅
+      * `stop()`：set _stop_event；run() 自然退出
+    - 启动初始位置 = seed CENTER (30.225, 120.525, alt=50)，battery=100，fsm_state=IDLE（P3.4 再做 scenarios.initial_state 解析）
+  - `agents/manager.py`：
+    - `AgentManager` 单例，`get_instance()` / `reset_for_tests()`
+    - `start_all()`：用 `async_session_maker()` 加载 active robots → 为每台 `asyncio.create_task(agent.run(), name=f"agent:{code}")`；重复调用 no-op
+    - `stop_all(*, timeout_sec=5.0)`：1) 给每个 agent 发 stop()；2) `asyncio.gather(*tasks, return_exceptions=True)` + `wait_for(timeout)`；3) 超时 task.cancel() + 再 gather 一次让 cancel 生效；4) 清空 _agents/_tasks，started=False
+    - `get(robot_id) / list_agents() / started` 查询接口（为 P3.5 WS 推送预留）
+    - 模块级 `get_agent_manager()` 便捷访问器
+  - `core/constants.py` 追加：`FAULT_BATTERY_THRESHOLD = 5.0` + `HEARTBEAT_TIMEOUT_SEC = 15`（P3.4 用）
+  - `core/config.py`：mock_agents_enabled 默认 False（避免 pytest/自检自动起 25 协程），tick_hz 改 float（更灵活）
+  - `main.py`：FastAPI `@asynccontextmanager async def lifespan(_app)` 闭环 startup/shutdown；只在 settings.mock_agents_enabled=True 时调用 start_all/stop_all
+- 设计决策：
+  - **不写 robot_states 表**（P3.4 才写）：BUILD_ORDER P3.4 字面"状态变化时写 robot_states 表"，P3.3 主循环只在内存维护状态
+  - **mock_agents_enabled 默认 False**：自检 / pytest 启动 FastAPI 不自动起 25 协程；想看 Agent 跑就在 backend/.env 显式 `MOCK_AGENTS_ENABLED=true`
+  - **故障检测仅 battery**：P3.3 没有 Mock 行为让电量真的下降，触发不到；自检里手动注入 battery=4 验证 transit(IDLE→FAULT) 通路
+  - **stop_all 用 stop_event 而非 task.cancel**：CancelledError 在 sleep 中被抛出会触发 try/finally 中可能的 await，反而拖慢；stop_event.set() + asyncio.wait_for 让循环主动 break，是更"优雅"的退出
+  - **单 tick 异常不让协程死亡**：`try/except Exception` 包裹 _tick，仅 logger.exception；P3.4 引入 DB 写入 / WS 推送后，单次故障不应影响其他 25 个 Agent
+  - **用 Event.wait 替代 sleep**：stop() 可立即唤醒等待中的协程，self._stop_event.wait() 在 wait_for 超时时正常进入下一 tick
+- 测试验证（临时 backend/_p33_check.py，验证后已删除不入库，14 项断言全绿）：
+  - [1] ROBOT_FSM_TRANSITIONS 字典与 BUSINESS_RULES §2.2.3 完全一致（5 状态 + 转移集）
+  - [2] RobotAgent.from_db(UAV-001) 加载成功，code/type/fsm_state=IDLE/battery=100/position=CENTER/has_yolo=True
+  - [3] 合法 transit 链：IDLE→BIDDING→EXECUTING→RETURNING→IDLE 4 步全过
+  - [4] 非法 transit 拒绝：IDLE→EXECUTING、UNKNOWN 目标、FAULT→BIDDING；FAULT→IDLE 唯一允许
+  - [5] _check_faults：battery=100→None；battery=5.1→None；battery=5.0→'low_battery'；battery=4→'low_battery'；_tick 触发自动 transit('FAULT')
+  - [6] AgentManager.start_all 启动 25 个 Agent，0.5s 内全 25 个 tick_count≥1（实测 min=8 max=9，tick_hz=20）
+  - [7] stop_all 0.000 秒优雅退出，list_agents=[]，started=False
+  - [8] lifespan 双分支：False 分支跳过 start_all（manager 未启动）；True 分支启停闭环（25→0）。**直接测 lifespan async context manager**（httpx ASGITransport 默认不触发 FastAPI lifespan，故不走 AsyncClient 链路）
+- 环境处理：
+  - 沿用 backend/.venv，无新增依赖
+- Git 提交：
+  - commit message：feat: P3.3 robot agent and manager skeleton
+  - push 状态：待执行
+- 下一步建议：
+  - P3.4 Mock 行为：
+    1. IDLE 状态：位置/电量不变（已是默认行为）
+    2. EXECUTING 状态：每秒位置朝 current_task target 移动 1m，电量 -0.5%
+    3. 故障检测补：sensor_error 框架 + 概率注入开关（演示用）
+    4. 状态/位置变化时 `RobotStateRepository.append`（仅状态变化或电量跨阈值时写，避免每秒 25 行）
+    5. P3.4 末尾应能用 SQL 看到 `robot_states` 表逐秒新增；WS 推送是 P3.5 的事
 
 ### P3.2 — 机器人 REST 接口实现（2026-05-03）
 
