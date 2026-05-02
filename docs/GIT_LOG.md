@@ -24,6 +24,25 @@
 
 ## 提交记录
 
+### 2026-05-02 — P2.5
+
+- 任务：P2.5 其他认证接口（refresh + me + logout）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P2.5 auth refresh me logout endpoints
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/services/auth_service.py：新增 `refresh()` 方法（解 refresh token → 校验 type=refresh / 用户存活 → 颁新 access+refresh，过期/失效翻译为 401_AUTH_TOKEN_EXPIRED_001 / 401_AUTH_TOKEN_INVALID_001）
+  - backend/app/api/v1/auth.py：追加 POST /refresh、GET /me（依赖 get_current_user）、POST /logout（204，response_class=Response，简化版无黑名单）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 自检（10/10 全绿，httpx + ASGITransport）：login / /me 带 access / /me 缺 token / /me 用 refresh / /refresh 合法（新 access 可打 /me） / /refresh 用 access / /refresh 篡改 / /refresh 过期 / /logout 204 / /logout 缺 token
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P2.4
 
 - 任务：P2.4 中间件：JWT 解析 + 当前用户

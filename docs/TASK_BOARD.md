@@ -8,9 +8,9 @@
 ## 当前阶段
 
 当前阶段：P2 认证 + 基础 API  
-当前任务：P2.5 其他认证接口（/auth/refresh + /auth/me + /auth/logout）  
+当前任务：P2.6 统一错误处理（X-Request-Id 中间件 + RequestValidationError 转 ErrorResponse）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P2.4 完成（app/api/deps.py：oauth2_scheme + get_current_user + require_permission 依赖工厂，10/10 自检），下一步用 deps 挂三个端点  
+备注：P2.5 完成（/auth/refresh + /auth/me + /auth/logout，10/10 自检），下一步补 X-Request-Id 与校验错误统一格式  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P2.5 其他认证接口：POST /auth/refresh + GET /auth/me + POST /auth/logout
+- [ ] P2.6 统一错误处理：X-Request-Id 中间件 + RequestValidationError 转 ErrorResponse
 
 ### In Progress
 
@@ -68,6 +68,7 @@
 - [x] P2.2 认证 Schemas + Repository：schemas/auth.py（4 schemas）+ UserRepository（4 方法含 roles/permissions JOIN）（2026-05-02，Claude Code）
 - [x] P2.3 登录接口：POST /api/v1/auth/login + AuthService + 账号锁定（内存版，5 次失败锁 15 分钟，防用户名枚举）（2026-05-02，Claude Code）
 - [x] P2.4 JWT 中间件：app/api/deps.py（oauth2_scheme + get_current_user + require_permission 依赖工厂），覆盖 401_AUTH_TOKEN_EXPIRED_001 / 401_AUTH_TOKEN_INVALID_001 / 403_AUTH_PERMISSION_DENIED_001，10/10 自检（2026-05-02，Claude Code）
+- [x] P2.5 其他认证接口：POST /auth/refresh（AuthService.refresh）+ GET /auth/me + POST /auth/logout（204，response_class=Response，简化版无黑名单），httpx ASGITransport 10/10 自检（2026-05-02，Claude Code）
 
 ---
 

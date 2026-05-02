@@ -19,7 +19,9 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from uuid import UUID
 
+from jose import ExpiredSignatureError, JWTError
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
@@ -30,9 +32,11 @@ from app.core.constants import (
 )
 from app.core.exceptions import BusinessError
 from app.core.security import (
+    TOKEN_TYPE_REFRESH,
     access_token_expires_in,
     create_access_token,
     create_refresh_token,
+    decode_token,
     verify_password,
 )
 from app.models.user import User
@@ -95,6 +99,22 @@ _INVALID = BusinessError(
 )
 
 
+def _refresh_invalid() -> BusinessError:
+    return BusinessError(
+        code="401_AUTH_TOKEN_INVALID_001",
+        message="Refresh Token 失效",
+        http_status=401,
+    )
+
+
+def _refresh_expired() -> BusinessError:
+    return BusinessError(
+        code="401_AUTH_TOKEN_EXPIRED_001",
+        message="Refresh Token 已过期",
+        http_status=401,
+    )
+
+
 class AuthService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -126,5 +146,45 @@ class AuthService:
         return TokenResponse(
             access_token=access,
             refresh_token=refresh,
+            expires_in=access_token_expires_in(),
+        )
+
+    async def refresh(self, refresh_token: str) -> TokenResponse:
+        """用 Refresh Token 换新的 access + refresh。
+
+        对照 API_SPEC §1（POST /auth/refresh，401 Refresh Token 失效）
+        + BUSINESS_RULES §6.1。
+
+        失败路径统一返回 401_AUTH_TOKEN_INVALID_001（type 不匹配 / sub 异常 /
+        用户停用 / 签名错），过期单独抛 401_AUTH_TOKEN_EXPIRED_001。
+        """
+        try:
+            payload = decode_token(refresh_token)
+        except ExpiredSignatureError as exc:
+            raise _refresh_expired() from exc
+        except JWTError as exc:
+            raise _refresh_invalid() from exc
+
+        if payload.get("type") != TOKEN_TYPE_REFRESH:
+            raise _refresh_invalid()
+
+        sub = payload.get("sub")
+        if not sub:
+            raise _refresh_invalid()
+        try:
+            user_id = UUID(str(sub))
+        except (ValueError, TypeError) as exc:
+            raise _refresh_invalid() from exc
+
+        user = await self.users.find_by_id(user_id)
+        if user is None or not user.is_active:
+            raise _refresh_invalid()
+
+        roles, _ = await self.users.get_roles_and_permissions(user.id)
+        new_access = create_access_token(user_id=user.id, roles=roles)
+        new_refresh = create_refresh_token(user_id=user.id)
+        return TokenResponse(
+            access_token=new_access,
+            refresh_token=new_refresh,
             expires_in=access_token_expires_in(),
         )

@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P2 认证 + 基础 API  
-当前任务：P2.5 其他认证接口（/auth/refresh + /auth/me + /auth/logout）  
-最近完成：P2.4 中间件：JWT 解析 + 当前用户（2026-05-02）  
-下一任务：P2.5 /auth/refresh + /auth/me + /auth/logout（基于 P2.4 的 deps）  
+当前任务：P2.6 统一错误处理（X-Request-Id 中间件 + RequestValidationError 转 ErrorResponse）  
+最近完成：P2.5 /auth/refresh + /auth/me + /auth/logout（2026-05-02）  
+下一任务：P2.6 BusinessError handler 已就位，补 X-Request-Id 中间件 + RequestValidationError 统一格式  
 
 ---
 
@@ -91,6 +91,46 @@
 ---
 
 ## 已完成任务
+
+### P2.5 — /auth/refresh + /auth/me + /auth/logout（2026-05-02）
+
+- 任务：P2.5 其他认证接口
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/services/auth_service.py（修改：新增 refresh()）
+  - backend/app/api/v1/auth.py（修改：追加 3 路由）
+- 新增内容：
+  - `AuthService.refresh(refresh_token) -> TokenResponse`
+    - 解 refresh token，过期 → `401_AUTH_TOKEN_EXPIRED_001`
+    - JWTError / type≠refresh / sub 非 UUID / 用户停用或不存在 → `401_AUTH_TOKEN_INVALID_001`
+    - 通过则颁发新 access + 新 refresh（重新查最新 roles）
+  - `POST /api/v1/auth/refresh`（公开），body=RefreshTokenRequest，200=TokenResponse
+  - `GET /api/v1/auth/me`（需认证），`Depends(get_current_user)` 直接返回 CurrentUser
+  - `POST /api/v1/auth/logout`（需认证），`response_class=Response` + `status_code=204`，简化版不做后端黑名单
+- 设计决策：
+  - logout 必须用 `response_class=Response`，否则 FastAPI 默认 JSONResponse 与 204 冲突（运行时 AssertionError："Status code 204 must not have a response body"），已在代码中注明
+  - refresh 不复用 P2.4 deps：deps 限制 type=access；refresh 端点反向接受 type=refresh，逻辑放在 service 内
+  - refresh 不写 DB（不更新 last_login_at），与 login 区分语义
+- 环境处理：
+  - venv 缺装 httpx（CONVENTIONS [dev] 已声明 `httpx>=0.26,<0.27`），已安装 0.26.0
+- 测试验证（自检脚本 10 项，全绿，httpx + ASGITransport）：
+  - login 200 expires_in=86400 ✓
+  - /me 带 access → 200 + perms_count=7 ✓
+  - /me 不带 token → 401_AUTH_TOKEN_INVALID_001 ✓
+  - /me 用 refresh token（type 不匹配）→ 401_AUTH_TOKEN_INVALID_001 ✓
+  - /refresh 合法 → 200 + 新 access 可打 /me + 新 refresh 可再换 ✓
+  - /refresh 用 access 当 refresh → 401_AUTH_TOKEN_INVALID_001 ✓
+  - /refresh 篡改 → 401_AUTH_TOKEN_INVALID_001 ✓
+  - /refresh 过期 → 401_AUTH_TOKEN_EXPIRED_001 ✓
+  - /logout 带 access → 204 无 body ✓
+  - /logout 不带 token → 401_AUTH_TOKEN_INVALID_001 ✓
+- Git 提交：
+  - commit message：feat: P2.5 auth refresh me logout endpoints
+  - push 状态：待执行
+- 下一步建议：
+  - P2.6 统一错误处理：补 `X-Request-Id` 中间件（每请求生成 + 写 response header + 注入日志/错误体）+ `RequestValidationError` 全局 handler 转 `422_VALIDATION_ERROR_001` 风格
+  - P2 整体验收基本就绪：登录 → 拿 token → 取 /me → 错密码 5 次锁，全部已通过
 
 ### P2.4 — JWT 解析中间件 + 当前用户 + 权限校验（2026-05-02）
 
