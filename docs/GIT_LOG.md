@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P2.3 login endpoint + account lockout
-- Commit hash：（push 后回填）
+- Commit hash：53b0bcf
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
