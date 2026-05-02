@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.router import api_router
 from app.core.exceptions import BusinessError
 
 app = FastAPI(
@@ -40,3 +41,6 @@ async def business_error_handler(request: Request, exc: BusinessError) -> JSONRe
 @app.get("/health", tags=["system"])
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+app.include_router(api_router)

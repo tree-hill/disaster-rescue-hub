@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P2 认证 + 基础 API  
-当前任务：P2.3 登录接口  
-最近完成：P2.2 认证 Schemas + Repository（2026-05-02）  
-下一任务：P2.3 POST /auth/login + 账号锁定（5 次失败 → 423，锁 15 分钟）  
+当前任务：P2.4 中间件：JWT 解析 + 当前用户  
+最近完成：P2.3 登录接口 + 账号锁定（2026-05-02）  
+下一任务：P2.4 get_current_user + require_permission 装饰器  
 
 ---
 
@@ -91,6 +91,47 @@
 ---
 
 ## 已完成任务
+
+### P2.3 — 登录接口 POST /auth/login + 账号锁定（2026-05-02）
+
+- 任务：P2.3 登录接口
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/core/constants.py（新增）
+  - backend/app/services/__init__.py / services/auth_service.py（新增）
+  - backend/app/api/__init__.py / api/v1/__init__.py / api/v1/auth.py / api/router.py（新增）
+  - backend/app/main.py（修改，挂载 /api/v1）
+- 新增内容：
+  - 常量 LOGIN_FAIL_LOCKOUT_THRESHOLD=5 / LOGIN_LOCKOUT_DURATION_MIN=15 / JWT_*（在 constants.py 集中管理）
+  - AuthService.login(username, password) -> TokenResponse
+    - 锁定守卫：locked_until > now → 423_AUTH_ACCOUNT_LOCKED_001（即使密码正确也拒绝）
+    - 用户不存在 / is_active=False / 密码错 → 同一码 401_AUTH_INVALID_CREDENTIAL_001（防用户名枚举）
+    - 失败累加 ≥ 5 → 设置 locked_until = now + 15min
+    - 成功 → 清状态 + 更新 users.last_login_at = NOW() + 颁发双 token + commit
+  - 失败计数器：模块级 dict + asyncio.Lock 守护，进程内单例（重启清零，毕设场景够用）
+  - 接口：POST /api/v1/auth/login（请求体 LoginRequest JSON，200 返回 TokenResponse）
+- 设计决策：
+  - 锁定状态过期时自动清除并重置 count=0（不在锁定边界挂半状态）
+  - last_login_at 用 SQLAlchemy update + func.now()，避开手工时区计算
+  - 暴露 _reset_all_state_for_tests() 内部辅助，便于自检
+- 环境处理：
+  - venv 缺装 fastapi / uvicorn / structlog，已安装（连带 starlette / anyio / h11 / httptools / watchfiles / pyyaml / click 等）
+- 测试验证（自检脚本，9 项）：
+  - /api/v1/auth/login POST 路由已注册 ✓
+  - commander001 + password123 → access (roles=['commander']) + refresh，expires_in=86400 ✓
+  - 4 次错密码 → 全 401，count=4，未锁 ✓
+  - 第 5 次错密码 → 401，locked_until 设置 ✓
+  - 锁定期内正确密码 → 423_AUTH_ACCOUNT_LOCKED_001 ✓
+  - 锁定过期后正确密码 → 200，状态清零 ✓
+  - 不存在用户 → 同一 401 码，无枚举差异 ✓
+  - admin001 / system 皆可登录 ✓
+  - last_login_at 在成功后更新 ✓
+- Git 提交：
+  - commit message：feat: P2.3 login endpoint + account lockout
+  - push 状态：待执行
+- 下一步建议：
+  - P2.4：app/api/deps.py 实现 get_current_user（解 JWT → 翻译错误码 → 加载 CurrentUser）+ require_permission(perm)
 
 ### P2.2 — 认证 Schemas + Repository（2026-05-02）
 

@@ -24,6 +24,27 @@
 
 ## 提交记录
 
+### 2026-05-02 — P2.3
+
+- 任务：P2.3 登录接口 + 账号锁定
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P2.3 login endpoint + account lockout
+- Commit hash：（push 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/core/constants.py（新增）：JWT TTL + 锁定阈值集中管理
+  - backend/app/services/auth_service.py（新增）：AuthService.login + 模块级失败计数器（asyncio.Lock 守护）
+  - backend/app/api/v1/auth.py + api/router.py（新增）：POST /api/v1/auth/login
+  - backend/app/main.py（修改）：挂载 api_router
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 自检：路由注册 / 成功登录 / 4 次失败不锁 / 第 5 次锁 / 锁内拒绝正确密码 / 锁过期重置 / 不存在用户同 401 / 三个 seed 用户全可登 / last_login_at 更新，9/9 全绿
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P2.2
 
 - 任务：P2.2 认证 Schemas + Repository
