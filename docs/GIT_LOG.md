@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P2.6 unified error handling with X-Request-Id and ErrorResponse
-- Commit hash：（提交后回填）
+- Commit hash：d272147
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
