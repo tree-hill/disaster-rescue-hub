@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：fix: P1.4 correct database index sort order
-- Commit hash：（待填）
+- Commit hash：27f5887
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
