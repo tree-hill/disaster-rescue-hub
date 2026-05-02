@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P2 认证 + 基础 API  
-当前任务：P2.4 中间件：JWT 解析 + 当前用户  
-最近完成：P2.3 登录接口 + 账号锁定（2026-05-02）  
-下一任务：P2.4 get_current_user + require_permission 装饰器  
+当前任务：P2.5 其他认证接口（/auth/refresh + /auth/me + /auth/logout）  
+最近完成：P2.4 中间件：JWT 解析 + 当前用户（2026-05-02）  
+下一任务：P2.5 /auth/refresh + /auth/me + /auth/logout（基于 P2.4 的 deps）  
 
 ---
 
@@ -91,6 +91,46 @@
 ---
 
 ## 已完成任务
+
+### P2.4 — JWT 解析中间件 + 当前用户 + 权限校验（2026-05-02）
+
+- 任务：P2.4 中间件：JWT 解析 + 当前用户
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/api/deps.py（新增）
+- 新增内容：
+  - `oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)`
+    - `auto_error=False`：缺/坏 token 由本模块统一翻译为 BusinessError，避免 FastAPI 默认 401 文本不带项目错误码
+  - `get_current_user(token, db) -> CurrentUser`（FastAPI 依赖）
+    - 缺 token / type≠access / sub 非 UUID / 用户不存在 / is_active=False → `401_AUTH_TOKEN_INVALID_001`
+    - `jose.ExpiredSignatureError` → `401_AUTH_TOKEN_EXPIRED_001`
+    - `jose.JWTError` → `401_AUTH_TOKEN_INVALID_001`
+    - 通过 `UserRepository.get_roles_and_permissions` 加载最新 roles + permissions（不读 token 中的 permissions，保证调整即生效）
+  - `require_permission(perm: str) -> Callable`（FastAPI 依赖工厂）
+    - 用法：`Depends(require_permission("robot:manage"))`
+    - 缺权限 → `403_AUTH_PERMISSION_DENIED_001`，否则原样返回 CurrentUser
+- 设计决策：
+  - 用依赖工厂（不写 decorator）—— FastAPI 路由参数依赖系统更天然，且与 OpenAPI schema 兼容
+  - 用户不存在 / 停用 / sub 异常 统一返回 INVALID（不暴露具体原因，防探测）
+  - 不在 token 里塞 permissions：1 次 JOIN 换权限调整即时生效
+- 测试验证（自检脚本 10 项，全绿）：
+  - imports ok ✓
+  - 合法 access token → CurrentUser(commander001, roles=['commander'], perms_count=7) ✓
+  - 篡改 token → 401_AUTH_TOKEN_INVALID_001 ✓
+  - 过期 token（手工构造 exp=now-1h） → 401_AUTH_TOKEN_EXPIRED_001 ✓
+  - refresh-typed token（type=refresh） → 401_AUTH_TOKEN_INVALID_001 ✓
+  - is_active=False（update + rollback，未污染 DB）→ 401_AUTH_TOKEN_INVALID_001 ✓
+  - 不存在用户（uuid4 假 sub）→ 401_AUTH_TOKEN_INVALID_001 ✓
+  - 缺 token（None）→ 401_AUTH_TOKEN_INVALID_001 ✓
+  - require_permission("robot:manage") 命中 → 通过 ✓
+  - require_permission("nonexistent:perm") → 403_AUTH_PERMISSION_DENIED_001 ✓
+- Git 提交：
+  - commit message：feat: P2.4 jwt deps with get_current_user and require_permission
+  - push 状态：待执行
+- 下一步建议：
+  - P2.5：`POST /auth/refresh`（用 refresh token 换 access token）+ `GET /auth/me`（依赖 `get_current_user`，直接返回 CurrentUser）+ `POST /auth/logout`（简化版，前端清 token，无需后端黑名单）
+  - P2.6：统一错误处理（`X-Request-Id` 中间件 + `RequestValidationError` 转 ErrorResponse）
 
 ### P2.3 — 登录接口 POST /auth/login + 账号锁定（2026-05-02）
 

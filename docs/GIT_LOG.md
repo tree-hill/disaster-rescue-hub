@@ -24,6 +24,24 @@
 
 ## 提交记录
 
+### 2026-05-02 — P2.4
+
+- 任务：P2.4 中间件：JWT 解析 + 当前用户
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P2.4 jwt deps with get_current_user and require_permission
+- Commit hash：（提交后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/api/deps.py（新增）：oauth2_scheme（auto_error=False）+ get_current_user（翻译 401_AUTH_TOKEN_EXPIRED_001 / 401_AUTH_TOKEN_INVALID_001，校验 type=access，加载 roles+permissions）+ require_permission(perm) 依赖工厂（缺权限抛 403_AUTH_PERMISSION_DENIED_001）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 自检（10/10 全绿）：imports / 合法 access / 篡改 / 过期 / refresh-typed / inactive / ghost / 缺 token / require_permission 命中 / require_permission 缺失
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P2.3
 
 - 任务：P2.3 登录接口 + 账号锁定
