@@ -24,6 +24,25 @@
 
 ## 提交记录
 
+### 2026-05-02 — P2.2
+
+- 任务：P2.2 认证 Schemas + Repository
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P2.2 auth schemas and UserRepository
+- Commit hash：（push 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/schemas/__init__.py / schemas/auth.py（新增）：LoginRequest / TokenResponse / RefreshTokenRequest / CurrentUser（Pydantic v2，对照 DATA_CONTRACTS §5）
+  - backend/app/repositories/__init__.py / repositories/user.py（新增）：UserRepository 类，含 get_by_username / find_by_id / save / get_roles_and_permissions（显式 JOIN，无 relationship() 依赖）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 自检：imports / Schema 校验 / 用 commander001 + admin001 + system 三个 seed 用户跑通 repo 4 方法 / save+rollback 不污染 DB，全绿
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P2.1
 
 - 任务：P2.1 配置与依赖注入

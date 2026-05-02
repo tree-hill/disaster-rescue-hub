@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P2 认证 + 基础 API  
-当前任务：P2.2 认证 Schemas + Repository  
-最近完成：P2.1 配置与依赖注入（2026-05-02）  
-下一任务：P2.2 认证 Schemas（LoginRequest / TokenResponse / CurrentUser）+ UserRepository  
+当前任务：P2.3 登录接口  
+最近完成：P2.2 认证 Schemas + Repository（2026-05-02）  
+下一任务：P2.3 POST /auth/login + 账号锁定（5 次失败 → 423，锁 15 分钟）  
 
 ---
 
@@ -91,6 +91,46 @@
 ---
 
 ## 已完成任务
+
+### P2.2 — 认证 Schemas + Repository（2026-05-02）
+
+- 任务：P2.2 认证 Schemas + Repository
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/schemas/__init__.py（新增，空包）
+  - backend/app/schemas/auth.py（新增）
+  - backend/app/repositories/__init__.py（新增，空包）
+  - backend/app/repositories/user.py（新增）
+- 新增内容：
+  - `schemas/auth.py`（Pydantic v2，严格按 DATA_CONTRACTS §5）：
+    - LoginRequest：username (1-50) + password (1-128)，str_strip_whitespace=True
+    - TokenResponse：access_token + refresh_token + token_type=Literal["bearer"] + expires_in
+    - RefreshTokenRequest：refresh_token (min_length=1)
+    - CurrentUser：id (UUID) + username + display_name + roles + permissions
+  - `repositories/user.py`：`UserRepository(session)` 类
+    - `get_by_username(username) -> User | None`
+    - `find_by_id(user_id) -> User | None`（用 session.get）
+    - `save(user) -> User`（add + flush，事务边界由调用方控制）
+    - `get_roles_and_permissions(user_id) -> (roles_sorted, perms_sorted_unique)` 显式 JOIN
+- 设计决策：
+  - User/Role/UserRole 模型未定义 SQLAlchemy relationship()，采用显式 JOIN 查询；避免在 service 层手写 SQL
+  - `get_roles_and_permissions` 超出 BUILD_ORDER 字面三方法，但符合 CONVENTIONS §1.2（service 不写 SQL）
+  - Repository 用类而非模块函数：便于 P2.3 service 注入，遵循 CONVENTIONS §2.2 BaseRepository 提示
+- 测试验证（自检脚本）：
+  - imports / Schema 校验（合法 + 空串拒绝 + 默认 token_type=bearer）✓
+  - get_by_username("commander001") 拿到用户，password verifies ✓
+  - find_by_id 还原 ✓
+  - commander roles=['commander']，7 个权限 ✓
+  - admin roles=['admin']，含 user:manage + system:admin ✓
+  - system user 角色为 commander（P6.7 自动派单预留）✓
+  - 不存在用户 → None；随机 UUID → ([], []) ✓
+  - save() smoke test + rollback OK，未污染 DB ✓
+- Git 提交：
+  - commit message：feat: P2.2 auth schemas and UserRepository
+  - push 状态：待执行
+- 下一步建议：
+  - P2.3：实现 AuthService + POST /auth/login，含账号锁定（连续 5 次失败 → 423，锁 15 分钟）；BUSINESS_RULES §6.1 错误码 `423_AUTH_ACCOUNT_LOCKED_001` / `401_AUTH_INVALID_CREDENTIAL_001`
 
 ### P2.1 — 配置与依赖注入（2026-05-02）
 

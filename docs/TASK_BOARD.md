@@ -8,9 +8,9 @@
 ## 当前阶段
 
 当前阶段：P2 认证 + 基础 API  
-当前任务：P2.2 认证 Schemas + Repository  
+当前任务：P2.3 登录接口  
 任务来源：docs/BUILD_ORDER.md  
-备注：P2.1 完成（db/session.py + security.py JWT），seed 可用，alembic head=34b9faaa8fb0  
+备注：P2.2 完成（schemas/auth.py + UserRepository），下一步实现 /auth/login + 账号锁定  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P2.2 认证 Schemas + Repository（schemas/auth.py + repositories/user.py）
+- [ ] P2.3 登录接口 POST /auth/login + 账号锁定（5 次失败 → 423，锁 15 分钟）
 
 ### In Progress
 
@@ -65,6 +65,7 @@
 - [x] P1.4 触发器与索引：新建 migration 34b9faaa8fb0，修正 DB 中 12 个 ASC→DESC 索引；补验触发器 4 条 + GIN 索引 4 个（2026-05-02，Claude Code）
 - [x] P1.5 Seed 数据脚本：3 角色 + 3 用户（含 system）+ 3 编队 + 25 机器人 + 1 场景，幂等可重跑（2026-05-02，Claude Code）
 - [x] P2.1 配置与依赖注入：db/session.py async + security.py JWT（access 24h / refresh 7d，HS256）（2026-05-02，Claude Code）
+- [x] P2.2 认证 Schemas + Repository：schemas/auth.py（4 schemas）+ UserRepository（4 方法含 roles/permissions JOIN）（2026-05-02，Claude Code）
 
 ---
 
