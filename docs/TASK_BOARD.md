@@ -44,9 +44,8 @@
 
 ### To Do
 
-- [ ] Codex 审查：P1.2 ORM 模型字段对照 DATA_CONTRACTS.md
-- [ ] Codex 审查：P1.3 迁移脚本字段对照 DATA_CONTRACTS.md（手写脚本，存在漂移风险）
-- [ ] P1.4 触发器与索引（触发器已在 P1.3 完成，仅补充 GIN 索引）
+- [ ] Codex 复审：P1.2/P1.3 修复结果（server_default、Index 声明、DESC 方向）
+- [ ] P1.4 触发器与索引（触发器和 GIN ORM 声明已完成；需新增 migration 修复 DB 中的 DESC 索引方向）
 - [ ] P1.5 Seed 数据脚本
 
 ### In Progress
@@ -64,6 +63,7 @@
 - [x] P1.2 17 张表的 ORM 模型（2026-05-02，Claude Code）
 - [x] P1.3 第一次迁移（2026-05-02，Claude Code）
 - [x] P1.3 修复与补验：Python 3.11 venv + 端口 5433 + asyncpg env.py（2026-05-02，Claude Code）
+- [x] P1.2/P1.3 契约一致性修复：server_default + 删冗余UniqueConstraint + 补28个Index + migration DESC（2026-05-02，Claude Code）
 
 ---
 

@@ -126,7 +126,7 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint("priority IN (1,2,3)", name="tasks_priority_check"),
     )
-    op.create_index("idx_tasks_status", "tasks", ["status", "created_at"])
+    op.create_index("idx_tasks_status", "tasks", ["status", sa.text("created_at DESC")])
     op.create_index("idx_tasks_priority", "tasks", ["priority", "created_at"],
                     postgresql_where=sa.text("status = 'PENDING'"))
     op.create_index("idx_tasks_parent", "tasks", ["parent_id"])
@@ -147,7 +147,7 @@ def upgrade() -> None:
         sa.CheckConstraint("algorithm IN ('AUCTION_HUNGARIAN','GREEDY','RANDOM')", name="auctions_algo_check"),
         sa.CheckConstraint("status IN ('OPEN','CLOSED','FAILED')", name="auctions_status_check"),
     )
-    op.create_index("idx_auctions_task", "auctions", ["task_id", "started_at"])
+    op.create_index("idx_auctions_task", "auctions", ["task_id", sa.text("started_at DESC")])
 
     # ── 9. task_assignments ───────────────────────────────────────────────────
     op.create_table(
@@ -182,8 +182,8 @@ def upgrade() -> None:
             name="robot_states_fsm_check",
         ),
     )
-    op.create_index("idx_robot_states_robot_time", "robot_states", ["robot_id", "recorded_at"])
-    op.create_index("idx_robot_states_time", "robot_states", ["recorded_at"])
+    op.create_index("idx_robot_states_robot_time", "robot_states", ["robot_id", sa.text("recorded_at DESC")])
+    op.create_index("idx_robot_states_time", "robot_states", [sa.text("recorded_at DESC")])
     op.create_index("idx_robot_states_sensor", "robot_states", ["sensor_data"], postgresql_using="gin")
 
     # ── 11. robot_faults ──────────────────────────────────────────────────────
@@ -200,8 +200,8 @@ def upgrade() -> None:
         sa.Column("resolved_by", sa.UUID(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
         sa.CheckConstraint("severity IN ('info','warn','critical')", name="faults_severity_check"),
     )
-    op.create_index("idx_faults_robot", "robot_faults", ["robot_id", "occurred_at"])
-    op.create_index("idx_faults_unresolved", "robot_faults", ["occurred_at"],
+    op.create_index("idx_faults_robot", "robot_faults", ["robot_id", sa.text("occurred_at DESC")])
+    op.create_index("idx_faults_unresolved", "robot_faults", [sa.text("occurred_at DESC")],
                     postgresql_where=sa.text("resolved_at IS NULL"))
 
     # ── 12. bids ──────────────────────────────────────────────────────────────
@@ -216,7 +216,7 @@ def upgrade() -> None:
         sa.Column("submitted_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.UniqueConstraint("auction_id", "robot_id"),
     )
-    op.create_index("idx_bids_auction", "bids", ["auction_id", "bid_value"])
+    op.create_index("idx_bids_auction", "bids", ["auction_id", sa.text("bid_value DESC")])
 
     # ── 13. human_interventions ───────────────────────────────────────────────
     op.create_table(
@@ -235,9 +235,9 @@ def upgrade() -> None:
             name="interventions_type_check",
         ),
     )
-    op.create_index("idx_interventions_user", "human_interventions", ["user_id", "occurred_at"])
+    op.create_index("idx_interventions_user", "human_interventions", ["user_id", sa.text("occurred_at DESC")])
     op.create_index("idx_interventions_task", "human_interventions", ["target_task_id"])
-    op.create_index("idx_interventions_time", "human_interventions", ["occurred_at"])
+    op.create_index("idx_interventions_time", "human_interventions", [sa.text("occurred_at DESC")])
 
     # ── 14. blackboard_entries ────────────────────────────────────────────────
     op.create_table(
@@ -275,9 +275,9 @@ def upgrade() -> None:
         sa.Column("is_ignored", sa.Boolean(), nullable=False, server_default="false"),
         sa.CheckConstraint("severity IN ('info','warn','critical')", name="alerts_severity_check"),
     )
-    op.create_index("idx_alerts_unack", "alerts", ["raised_at"],
+    op.create_index("idx_alerts_unack", "alerts", [sa.text("raised_at DESC")],
                     postgresql_where=sa.text("acknowledged_at IS NULL AND is_ignored = FALSE"))
-    op.create_index("idx_alerts_severity", "alerts", ["severity", "raised_at"])
+    op.create_index("idx_alerts_severity", "alerts", ["severity", sa.text("raised_at DESC")])
 
     # ── 16. replay_sessions ───────────────────────────────────────────────────
     op.create_table(
@@ -294,7 +294,7 @@ def upgrade() -> None:
         sa.Column("created_by", sa.UUID(), sa.ForeignKey("users.id"), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
     )
-    op.create_index("idx_replay_created", "replay_sessions", ["created_at"])
+    op.create_index("idx_replay_created", "replay_sessions", [sa.text("created_at DESC")])
 
     # ── 17. experiment_runs ───────────────────────────────────────────────────
     op.create_table(

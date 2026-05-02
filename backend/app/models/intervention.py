@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import uuid
-
-from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
@@ -16,9 +14,12 @@ class HumanIntervention(Base):
             "intervention_type IN ('reassign','recall','cancel_task','algorithm_switch')",
             name="interventions_type_check",
         ),
+        Index("idx_interventions_user", "user_id", text("occurred_at DESC")),
+        Index("idx_interventions_task", "target_task_id"),
+        Index("idx_interventions_time", text("occurred_at DESC")),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),

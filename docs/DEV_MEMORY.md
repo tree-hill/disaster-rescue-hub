@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P1 数据层  
-当前任务：P1.4 触发器与索引（待 Codex 审查 P1.2/P1.3 后推进）  
-最近完成：P1.3 修复与补验（2026-05-02）  
-下一任务：P1.4 GIN 索引（触发器已在 P1.3 完成）  
+当前任务：P1.4 触发器与索引（建议 Codex 复审 P1.2/P1.3 修复后再推进）  
+最近完成：P1.2/P1.3 契约一致性修复（2026-05-02）  
+下一任务：P1.4 GIN 索引（触发器已在 P1.3 完成；ORM 中已补 GIN 索引声明）  
 
 ---
 
@@ -82,6 +82,44 @@
 ---
 
 ## 已完成任务
+
+### P1.2/P1.3 契约一致性修复（2026-05-02）
+
+- 任务：Codex 审查后的 P1.2/P1.3 契约修复
+- 执行工具：Claude Code
+- 修改类型：fix
+- 涉及文件：
+  - backend/app/models/user.py
+  - backend/app/models/robot.py
+  - backend/app/models/task.py
+  - backend/app/models/dispatch.py
+  - backend/app/models/intervention.py
+  - backend/app/models/blackboard.py
+  - backend/app/models/alert.py
+  - backend/app/models/replay.py
+  - backend/migrations/versions/26cff1e230e8_init_schema.py
+- 修复内容（ORM）：
+  - 所有 UUID 主键改为 `server_default=text("gen_random_uuid()")`，删除 `import uuid` 和 `default=uuid.uuid4`
+  - 布尔默认值改为 `server_default=text("TRUE")` / `server_default=text("FALSE")`
+  - 字符串默认值改为 `server_default=text("'PENDING'")` / `server_default=text("'OPEN'")`（含单引号，生成正确的 SQL DEFAULT 'PENDING'）
+  - 数值默认值改为 `server_default=text("2")` / `server_default=text("0")` / `server_default=text("1.0")`
+  - 删除 `user_roles` 中冗余的 `UniqueConstraint("user_id", "role_id")`（复合主键已保证唯一性）
+  - 补齐所有 28 个业务索引声明到各表 `__table_args__`（含 GIN 索引、partial 索引、DESC 排序）
+- 修复内容（Migration）：
+  - 12 处 `op.create_index` 补充 DESC 方向：created_at/recorded_at/occurred_at/started_at/bid_value/raised_at 等
+  - 使用 `sa.text("col DESC")` 写法
+- 已保持不变的设计偏差：
+  - `idx_blackboard_active` 继续使用全量索引（原因已在"已知设计偏差"章节记录）
+- 测试验证：
+  - `Base.metadata.tables` 数量：17 ✓
+  - `Base.metadata` 中业务索引总数：28 ✓（精确匹配 DATA_CONTRACTS §1）
+  - `alembic current` → `26cff1e230e8 (head)` ✓，无报错
+- Git 提交：
+  - commit message：fix: align P1 ORM and migration with data contracts
+  - push 状态：已 push
+- 下一步建议：
+  - 建议 Codex 复审本次修复，确认 server_default、索引声明无遗漏
+  - 复审通过后推进 P1.4（因 ORM 已有 GIN 索引声明，P1.4 重点在新 migration 补齐 DB 中的 DESC/GIN 索引）
 
 ### P1.3 修复与补验 — Python 环境 + 端口修复（2026-05-02）
 

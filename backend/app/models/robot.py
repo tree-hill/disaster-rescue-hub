@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import uuid
-
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -9,9 +7,11 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Numeric,
     String,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
@@ -24,7 +24,7 @@ class RobotGroup(Base):
 
     __tablename__ = "robot_groups"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name = Column(String(100), nullable=False)
     leader_robot_id = Column(UUID(as_uuid=True), nullable=True)  # 不加 FK，允许失效
     description = Column(Text, nullable=True)
@@ -35,9 +35,12 @@ class Robot(Base):
     __tablename__ = "robots"
     __table_args__ = (
         CheckConstraint("type IN ('uav', 'ugv', 'usv')", name="robots_type_check"),
+        Index("idx_robots_type", "type", postgresql_where=text("is_active = TRUE")),
+        Index("idx_robots_group", "group_id"),
+        Index("idx_robots_capability", "capability", postgresql_using="gin"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     code = Column(String(50), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
     type = Column(String(20), nullable=False)
@@ -48,7 +51,7 @@ class Robot(Base):
         ForeignKey("robot_groups.id", ondelete="SET NULL"),
         nullable=True,
     )
-    is_active = Column(Boolean, nullable=False, default=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("TRUE"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -62,6 +65,9 @@ class RobotState(Base):
             "fsm_state IN ('IDLE','BIDDING','EXECUTING','RETURNING','FAULT')",
             name="robot_states_fsm_check",
         ),
+        Index("idx_robot_states_robot_time", "robot_id", text("recorded_at DESC")),
+        Index("idx_robot_states_time", text("recorded_at DESC")),
+        Index("idx_robot_states_sensor", "sensor_data", postgresql_using="gin"),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -89,9 +95,15 @@ class RobotFault(Base):
             "severity IN ('info','warn','critical')",
             name="faults_severity_check",
         ),
+        Index("idx_faults_robot", "robot_id", text("occurred_at DESC")),
+        Index(
+            "idx_faults_unresolved",
+            text("occurred_at DESC"),
+            postgresql_where=text("resolved_at IS NULL"),
+        ),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     robot_id = Column(
         UUID(as_uuid=True),
         ForeignKey("robots.id", ondelete="CASCADE"),

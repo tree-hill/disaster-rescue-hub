@@ -24,6 +24,24 @@
 
 ## 提交记录
 
+### 2026-05-02 — P1.2/P1.3 契约一致性修复
+
+- 任务：P1.2/P1.3 契约一致性修复（Codex 审查后）
+- 工具：Claude Code
+- 分支：main
+- Commit message：fix: align P1 ORM and migration with data contracts
+- Commit hash：（待填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/models/*.py（8个文件）：UUID server_default、布尔/字符串/数值 server_default、删冗余 UniqueConstraint、补齐28个业务 Index 声明
+  - backend/migrations/versions/26cff1e230e8_init_schema.py：12处 DESC 索引方向修复
+  - docs/DEV_MEMORY.md、TASK_BOARD.md、GIT_LOG.md：更新记录
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P1.3 修复与补验
 
 - 任务：P1.3 修复与补验（Python 环境 + 端口冲突修复）

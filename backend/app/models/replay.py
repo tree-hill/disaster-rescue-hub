@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import uuid
-
 from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
@@ -22,20 +22,23 @@ from app.db.base import Base
 class Scenario(Base):
     __tablename__ = "scenarios"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name = Column(String(100), unique=True, nullable=False)
     disaster_type = Column(String(30), nullable=False)
     map_bounds = Column(JSONB, nullable=False)
     initial_state = Column(JSONB, nullable=False)
     description = Column(Text, nullable=True)
-    is_active = Column(Boolean, nullable=False, default=True)
+    is_active = Column(Boolean, nullable=False, server_default=text("TRUE"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class ReplaySession(Base):
     __tablename__ = "replay_sessions"
+    __table_args__ = (
+        Index("idx_replay_created", text("created_at DESC")),
+    )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     name = Column(String(200), nullable=False)
     scenario_id = Column(
         UUID(as_uuid=True),
@@ -60,9 +63,11 @@ class ExperimentRun(Base):
     __tablename__ = "experiment_runs"
     __table_args__ = (
         UniqueConstraint("batch_id", "algorithm", "run_index"),
+        Index("idx_exp_batch", "batch_id"),
+        Index("idx_exp_algo", "algorithm", "scenario_id"),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     batch_id = Column(UUID(as_uuid=True), nullable=False)
     scenario_id = Column(
         UUID(as_uuid=True),
