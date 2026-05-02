@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P2.5 auth refresh me logout endpoints
-- Commit hash：（提交后回填）
+- Commit hash：fcede53
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
