@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：fix: align P1 ORM and migration with data contracts
-- Commit hash：（待填）
+- Commit hash：371f337
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
