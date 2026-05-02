@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P3 机器人模块  
-当前任务：P3.4 Mock 行为实现（IDLE 不动 / EXECUTING 朝目标 1m·s / 电量 0.5% per tick / 写 robot_states + WS）  
-最近完成：P3.3 RobotAgent 协程基础（FSM 字典 + transit 守卫 + 1Hz 主循环 + AgentManager start/stop_all + lifespan 集成 + battery≤5 故障检测，14/14 自检全绿）（2026-05-03）  
-下一任务：P3.4 Mock 行为：IDLE 状态不变；EXECUTING 朝 current_task 目标移动 1m/s 且电量 -0.5%/tick；状态变化时写 robot_states + WS（WS 在 P3.5 落地，P3.4 先打钩子）  
+当前任务：P3.5 WebSocket 推送（python-socketio + connect/subscribe/disconnect + 1Hz 批量 robot.position_updated）  
+最近完成：P3.4 Mock 行为实现（IDLE 不动 / EXECUTING 朝目标 1m·s / 电量 -0.5%/tick / 每 tick 写 robot_states / emit 钩子 / 概率注入故障，10/10 自检全绿，1.05s × 25 Agent = 26 行符合 1Hz 验收）（2026-05-03）  
+下一任务：P3.5 `app/ws/server.py`（python-socketio）+ `app/ws/handlers.py`；把 RobotAgent 的 `_emit_state_changed` 钩子接到 `sio.emit('robot.position_updated', ...)`；实现 commander 房间订阅 + 批量推送  
 
 ---
 
@@ -91,6 +91,56 @@
 ---
 
 ## 已完成任务
+
+### P3.4 — Mock 行为：移动 / 电量 / robot_states 写入 / emit 钩子（2026-05-03）
+
+- 任务：P3.4 Mock 行为实现（BUILD_ORDER §P3.4）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/agents/robot_agent.py（修改）
+  - backend/app/core/constants.py（修改）
+  - backend/app/core/config.py（修改）
+- 新增内容：
+  - `RobotAgent.target_position: dict | None` 字段 + `set_target_position(lat, lng, alt=None)` / `clear_target_position()` 接口（P5 拍卖完成后由 dispatch_service 调用）
+  - `_move_toward_target()`：EXECUTING 状态下朝 target 移动 1m，无 target 时 no-op；距离 ≤ step 时直接吸附 target（便于上层判定到达）；近似 1° = METERS_PER_DEGREE m
+  - `_drain_battery()`：EXECUTING 状态电量 -0.5%/tick，下限 0
+  - `_persist_state()`：每 tick 开独立 session 写 1 行 robot_states，commit 后返回带 id 的 RobotState；NUMERIC(5,2) 字段用 `Decimal(f"{battery:.2f}")` 控制精度
+  - `_emit_state_changed(state)`：状态推送钩子，**P3.4 仅 logger.debug**；P3.5 替换为 `sio.emit('robot.position_updated', ...)`；预留 `_emit_override` 测试钩子
+  - `_check_faults` 加概率注入：`settings.mock_fault_inject_probability > 0` 时 `random.random() < p` 返回 'unknown'
+  - `_tick` 重写为 5 阶段流程：tick++ → EXECUTING 行为（移动 + 电量降）→ 故障检测 → 写 DB → emit
+  - 故障检测顺序设为"行为之后"：EXECUTING + battery=5.5 跑 1 tick → 5.0 → 立刻触发 FAULT，更接近真实机器人
+  - constants.py：新增 `EXECUTING_BATTERY_DRAIN_PCT=0.5` / `MOVE_STEP_METERS=1.0` / `METERS_PER_DEGREE=111320.0`（30°N 时 lng 真实 ≈ 96522，误差 15%，毕设演示可接受；P5 调度的距离用真实 haversine）
+  - config.py：新增 `mock_fault_inject_probability: float = 0.0`（默认关，演示时 0.001 ≈ 1.5 分钟一次）
+- 设计决策：
+  - **每 tick 都写一行**（与 P3 整体验收"每秒新增约 25 条"一致），不做"仅状态变化时写"；25 个协程独立事务、asyncpg 连接池自然管理
+  - **target 由外部注入**而非 Agent 内部生成 mock（避免 P5 接入时拆掉）；P3.4 自检手动 `set_target_position` 验证移动通路
+  - **WS 钩子留 logger 占位**，P3.5 替换；`_emit_override` 仅供测试劫持，生产代码不用
+  - **行为顺序：移动/电量 → 故障检测 → 写 DB → emit**：电量跨阈值的那一 tick 立即写一行 fsm=FAULT，emit 钩子也能拿到 FAULT 状态，下游展示连贯
+  - **近似 1° = 111320 m**：lat 真实 ≈ 110574 m（误差 0.7%）；lng 30°N 真实 ≈ 96522 m（误差 15%）；P3.4 移动是可视化用途，P5 调度仍用 haversine 真实距离
+  - **写入失败不让循环死亡**：上层 run() 已 try/except Exception 兜底；DB 抖动时单 tick 失败仅 log，下个 tick 继续
+- 测试验证（临时 backend/_p34_check.py，10 项断言全绿，验证后已删除不入库）：
+  - [1] IDLE 5 tick → position/battery 完全不变（tick_count=5）
+  - [2] EXECUTING 无 target 5 tick → position 不变，battery=80→77.5
+  - [3] EXECUTING + target 100m 北方 5 tick → 移动 5.0000m（精确）
+  - [4] 100 tick + target 1km 北方 → 累积 100.0000m（rel_err=0.00%）
+  - [5] 测试 1-4 后 UAV-001 累积写入 robot_states ≥ 115 行
+  - [6] EXECUTING + battery=5.5 跑 1 tick → battery=5.0 + fsm=FAULT，DB 最新行 fsm=FAULT 且 battery=5.00
+  - [7] mock_fault_inject_probability=1.0 + battery=100 → 1 tick 必 FAULT
+  - [8] _emit_state_changed 钩子被精确调用 3 次（fsm=IDLE / battery=100）
+  - [9] AgentManager.start_all 25 Agent + 1.05s → robot_states 新增 26 行（落在 [20,30] 区间，符合 1Hz × 25 估计）；stop_all 干净退出
+  - [10] finally 清理：DELETE FROM robot_states WHERE recorded_at >= test_start → 删除 146 行（5+5+5+100+1+1+3+26）
+- 环境处理：
+  - 沿用 backend/.venv，无新增依赖
+- Git 提交：
+  - commit message：feat: P3.4 mock agent behavior with state persistence
+  - push 状态：待执行
+- 下一步建议：
+  - P3.5 WebSocket 推送：
+    1. `app/ws/server.py`：python-socketio AsyncServer 实例 + ASGI mount
+    2. `app/ws/handlers.py`：connect（JWT 校验） / subscribe（commander 房间订阅） / disconnect 事件
+    3. 把 RobotAgent `_emit_state_changed` 钩子改写为 `await sio.emit('robot.position_updated', payload, room='commander')`
+    4. 1Hz 批量推送考虑：每个 Agent 单条 emit vs AgentManager 聚合 25 条/秒 一次 emit；后者节约客户端 socket 流量，前者实现简单——P3.5 决策
 
 ### P3.3 — RobotAgent 协程基础 + AgentManager + lifespan（2026-05-03）
 

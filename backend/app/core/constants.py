@@ -19,3 +19,13 @@ LOGIN_LOCKOUT_DURATION_MIN = 15   # 锁定 15 分钟
 FAULT_BATTERY_THRESHOLD = 5.0
 # 心跳超时（秒）；P3.4 实现 comm_lost 时使用
 HEARTBEAT_TIMEOUT_SEC = 15
+
+# === Mock 行为 (P3.4) ===
+# EXECUTING 状态每 tick 电量下降 0.5%（BUILD_ORDER §P3.4）
+EXECUTING_BATTERY_DRAIN_PCT = 0.5
+# EXECUTING 状态每 tick 朝目标移动 1 米（BUILD_ORDER §P3.4）
+MOVE_STEP_METERS = 1.0
+# 1° lat/lng 在赤道附近 ≈ 111320 米；30°N 时 lng 实际 ≈ 96522 米
+# Mock 阶段用统一 111320 简化（误差约 15%，毕设演示可接受）；
+# P5 调度的距离计算用真实 haversine
+METERS_PER_DEGREE = 111320.0

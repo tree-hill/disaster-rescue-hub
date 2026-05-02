@@ -1,30 +1,43 @@
-"""单台机器人 Agent —— 1Hz 主循环 + FSM 状态机骨架。
+"""单台机器人 Agent —— 1Hz 主循环 + FSM 状态机 + Mock 行为。
 
 对照：
-- BUILD_ORDER §P3.3（__init__ / async run / FSM 字典）
+- BUILD_ORDER §P3.3 / §P3.4
 - BUSINESS_RULES §2.2（FSM 转移表 + 故障触发条件）
-- DATA_CONTRACTS §1.4 / §4.2 / §4.3（robots / capability / position）
+- DATA_CONTRACTS §1.4 / §1.6 / §4.2 / §4.3（robots / robot_states / capability / position）
 
-本任务范围（严格按 BUILD_ORDER 字面）：
-- 主循环 1Hz 推动 tick_count
-- 状态机 transit() 守卫（违规抛 ValueError）
-- 故障检测：仅 battery <= 5（其余 P3.4 补全）
-- 不写 robot_states 表（P3.4 加 Mock 移动逻辑时一并写）
-- 不推 WS 事件（P3.5）
+本任务范围（截至 P3.4）：
+- 主循环 1Hz：推 tick_count + 故障检测 + IDLE 不动 / EXECUTING 移动 1m·s + 电量 -0.5%/tick
+- 状态机 transit() 守卫（违规抛 FSMTransitionError）
+- 故障检测：battery <= 5 + 概率注入（settings.mock_fault_inject_probability）；
+  comm_lost / sensor_error 留 P3.5 / P3.6
+- **每 tick 写一行 robot_states**（与 P3 验收"每秒新增约 25 条"一致）
+- WS 推送钩子 _emit_state_changed：P3.4 仅 logger；P3.5 替换为真实 WS broadcast
 - 不响应召回信号（P3.6）
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import random
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.constants import FAULT_BATTERY_THRESHOLD
+from app.core.config import settings
+from app.core.constants import (
+    EXECUTING_BATTERY_DRAIN_PCT,
+    FAULT_BATTERY_THRESHOLD,
+    METERS_PER_DEGREE,
+    MOVE_STEP_METERS,
+)
+from app.db.session import async_session_maker
+from app.models.robot import RobotState
 from app.repositories.robot import RobotRepository
+from app.repositories.robot_state import RobotStateRepository
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +102,7 @@ class RobotAgent:
         self.position = position or dict(DEFAULT_INITIAL_POSITION)
         self.battery = battery
         self.current_task_id: UUID | None = None
+        self.target_position: dict[str, float] | None = None  # set_target_position 设置
 
         # 运行控制
         self.tick_hz = tick_hz
@@ -96,6 +110,8 @@ class RobotAgent:
         self.tick_count = 0
         self.last_heartbeat_at: datetime | None = None
         self._stop_event = asyncio.Event()
+        # 测试钩子：覆盖默认的 _emit_state_changed（仅 P3.4 自检使用，P3.5 直接改 _emit）
+        self._emit_override = None  # type: ignore[assignment]
 
     # ---------- 工厂 ----------
     @classmethod
@@ -141,27 +157,140 @@ class RobotAgent:
             },
         )
 
-    # ---------- 故障检测（P3.3 仅 battery；P3.4 补 sensor_error / comm_lost） ----------
+    # ---------- 目标位置（P5 拍卖完成后由 dispatch_service 调用） ----------
+    def set_target_position(
+        self, lat: float, lng: float, altitude_m: float | None = None
+    ) -> None:
+        """设置 EXECUTING 状态的移动目标。"""
+        self.target_position = {
+            "lat": float(lat),
+            "lng": float(lng),
+            "altitude_m": altitude_m if altitude_m is not None else self.position.get("altitude_m"),
+        }
+
+    def clear_target_position(self) -> None:
+        self.target_position = None
+
+    # ---------- 故障检测 ----------
     def _check_faults(self) -> str | None:
-        """检查所有故障条件，返回故障类型（如 'low_battery'）或 None。"""
+        """检查所有故障条件，返回故障类型或 None。
+
+        P3.4 实现：battery <= 5 + 概率注入；
+        P3.5/3.6 补：comm_lost（心跳超时）、sensor_error。
+        """
         if self.battery <= FAULT_BATTERY_THRESHOLD:
             return "low_battery"
+        # 概率注入（演示用，默认 0.0 关闭）
+        if (
+            settings.mock_fault_inject_probability > 0
+            and random.random() < settings.mock_fault_inject_probability
+        ):
+            return "unknown"
         return None
+
+    # ---------- Mock 行为 ----------
+    def _move_toward_target(self) -> None:
+        """EXECUTING 状态下朝 target 移动 1 米（近似 1° = METERS_PER_DEGREE m）。
+
+        无 target 时 no-op。距离 < 1 米直接吸附到 target。
+        """
+        if self.target_position is None:
+            return
+        cur_lat = self.position["lat"]
+        cur_lng = self.position["lng"]
+        tgt_lat = self.target_position["lat"]
+        tgt_lng = self.target_position["lng"]
+
+        dlat = tgt_lat - cur_lat
+        dlng = tgt_lng - cur_lng
+        dist_deg = math.hypot(dlat, dlng)
+        if dist_deg < 1e-12:
+            return  # 已到达
+
+        step_deg = MOVE_STEP_METERS / METERS_PER_DEGREE
+        if dist_deg <= step_deg:
+            # 到达：吸附到 target，便于上层判断到达条件
+            self.position["lat"] = tgt_lat
+            self.position["lng"] = tgt_lng
+            tgt_alt = self.target_position.get("altitude_m")
+            if tgt_alt is not None:
+                self.position["altitude_m"] = tgt_alt
+            return
+
+        ratio = step_deg / dist_deg
+        self.position["lat"] = cur_lat + dlat * ratio
+        self.position["lng"] = cur_lng + dlng * ratio
+
+    def _drain_battery(self) -> None:
+        """EXECUTING 状态电量下降 0.5%/tick，下限 0。"""
+        self.battery = max(0.0, self.battery - EXECUTING_BATTERY_DRAIN_PCT)
+
+    # ---------- WS 推送钩子（P3.5 替换为真实 broadcast） ----------
+    def _emit_state_changed(self, state: RobotState) -> None:
+        """状态变化推送钩子。P3.4 仅 logger；P3.5 替换为 sio.emit('robot.position_updated', ...)。"""
+        if self._emit_override is not None:
+            self._emit_override(state)
+            return
+        logger.debug(
+            "robot_state_emitted",
+            extra={
+                "robot_id": str(self.robot_id),
+                "code": self.code,
+                "fsm_state": state.fsm_state,
+                "battery": float(state.battery),
+                "position": dict(state.position),
+            },
+        )
+
+    # ---------- 数据持久化 ----------
+    async def _persist_state(self) -> RobotState:
+        """写入一行 robot_states，返回带 id 的实例（commit 后可读）。
+
+        每 tick 开独立 session：25 个协程并发，asyncpg 连接池自然管理。
+        """
+        async with async_session_maker() as session:
+            state = RobotState(
+                robot_id=self.robot_id,
+                fsm_state=self.fsm_state,
+                position=dict(self.position),
+                # NUMERIC(5,2) → 用 Decimal 控制精度，避免浮点误差
+                battery=Decimal(f"{self.battery:.2f}"),
+                sensor_data={},
+                current_task_id=self.current_task_id,
+            )
+            await RobotStateRepository(session).append(state)
+            await session.commit()
+            return state
 
     # ---------- 主循环 ----------
     async def _tick(self) -> None:
-        """单次 tick：心跳 + 故障检测。
+        """单次 tick：
 
-        P3.3 不做位置移动 / 电量下降（P3.4）和 WS 推送（P3.5）。
+        1. 计数 + 心跳
+        2. EXECUTING 状态下：移动 + 电量下降（先做行为，再检查故障）
+        3. 故障检测（除已 FAULT 外）→ 命中即 transit FAULT
+        4. 写 robot_states
+        5. emit 钩子
         """
         self.tick_count += 1
         self.last_heartbeat_at = datetime.now(timezone.utc)
 
-        # 故障检测：除已 FAULT 外的状态命中条件 → 转 FAULT
+        # 2) Mock 行为
+        if self.fsm_state == "EXECUTING":
+            self._move_toward_target()
+            self._drain_battery()
+
+        # 3) 故障检测（行为之后：电量降到阈值的那一 tick 立即触发 FAULT）
         if self.fsm_state != "FAULT":
             fault_type = self._check_faults()
             if fault_type is not None:
                 self.transit("FAULT", reason=fault_type)
+
+        # 4) 持久化（写入失败不应让循环死亡 —— 上层 try/except 兜底）
+        state = await self._persist_state()
+
+        # 5) 推送
+        self._emit_state_changed(state)
 
     async def run(self) -> None:
         """1Hz 主循环。响应 stop()/cancel 优雅退出。"""

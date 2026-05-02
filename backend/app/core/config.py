@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     # 本地开发若想让 Agent 跑起来，在 backend/.env 显式 MOCK_AGENTS_ENABLED=true。
     mock_agents_enabled: bool = False
     mock_agents_tick_hz: float = 1.0
+    # 概率注入故障（BUSINESS_RULES §2.2.2 第 4 项，演示用）
+    # 默认 0.0 关闭；答辩演示时调到 0.001（每 Agent 每 tick 0.1% 概率）
+    mock_fault_inject_probability: float = 0.0
 
 
 settings = Settings()

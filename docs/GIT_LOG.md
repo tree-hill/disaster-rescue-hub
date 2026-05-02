@@ -24,6 +24,49 @@
 
 ## 提交记录
 
+### 2026-05-03 — P3.4
+
+- 任务：P3.4 Mock 行为实现（移动 / 电量下降 / 每 tick 写 robot_states / emit 钩子）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P3.4 mock agent behavior with state persistence
+- Commit hash：（push 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/agents/robot_agent.py：
+    * 新增 `target_position` + `set_target_position` / `clear_target_position`（P5 拍卖完成由 dispatch_service 注入）
+    * 新增 `_move_toward_target`（近似 1° = METERS_PER_DEGREE，距离 ≤ step 时吸附 target）
+    * 新增 `_drain_battery`（EXECUTING -0.5%/tick，下限 0）
+    * 新增 `_persist_state`（每 tick 独立 session 写一行 robot_states，NUMERIC(5,2) 用 Decimal）
+    * 新增 `_emit_state_changed` WS 推送钩子（P3.4 logger.debug 占位 + `_emit_override` 测试钩子）
+    * `_check_faults` 加概率注入分支（settings.mock_fault_inject_probability > 0 时 random < p → 'unknown'）
+    * `_tick` 重写为 5 阶段：tick++ → EXECUTING 行为 → 故障检测 → 写 DB → emit
+  - backend/app/core/constants.py：新增 EXECUTING_BATTERY_DRAIN_PCT=0.5 / MOVE_STEP_METERS=1.0 / METERS_PER_DEGREE=111320.0
+  - backend/app/core/config.py：新增 mock_fault_inject_probability: float = 0.0（默认关）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 设计决策：
+  - 每 tick 都写 robot_states（与 P3 整体验收"每秒新增约 25 条"一致），非"仅状态变化时写"
+  - target 由外部注入而非 Agent 内生成 mock（避免 P5 接入时拆代码）
+  - 行为顺序：移动/电量 → 故障检测 → 写 DB → emit；电量跨阈值的那一 tick 立即写一行 fsm=FAULT
+  - 近似 1° = 111320 m：lat 误差 0.7%，lng 30°N 误差 15%；P5 调度仍用真实 haversine
+  - WS 钩子留 logger 占位 + `_emit_override` 测试劫持；P3.5 替换为 `sio.emit('robot.position_updated', ..., room='commander')`
+- 自检（10 项断言全绿，临时 backend/_p34_check.py 验证后已删除）：
+  - IDLE 5 tick → position/battery 不变
+  - EXECUTING 无 target 5 tick → position 不变 + battery 80→77.5
+  - EXECUTING + target 100m 北方 5 tick → 移动 5.0000m（精确）
+  - 100 tick + target 1km → 累积 100.0000m（rel_err=0.00%）
+  - UAV-001 累积写入 robot_states ≥ 115 行
+  - EXECUTING + battery=5.5 → 1 tick → battery=5.0 + fsm=FAULT 写入
+  - mock_fault_inject_probability=1.0 + battery=100 → 1 tick 必 FAULT
+  - _emit_state_changed 钩子 3 次精确调用
+  - **AgentManager 25 Agent + 1.05s → robot_states +26 行（1Hz × 25 验收通过）**
+  - finally 清理：DELETE FROM robot_states WHERE recorded_at >= test_start → 146 行
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-03 — P3.3
 
 - 任务：P3.3 RobotAgent 协程基础
