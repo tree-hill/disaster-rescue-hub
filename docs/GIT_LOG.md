@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P2.1 async db session + JWT helpers
-- Commit hash：（push 后回填）
+- Commit hash：6bef530
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
