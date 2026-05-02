@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：P1 数据层  
-当前任务：P1.5 Seed 数据脚本  
-最近完成：P1.4 修复数据库 DESC 索引方向（2026-05-02）  
-下一任务：P1.5 Seed 数据脚本（scripts/seed.py）  
+当前阶段：P2 认证 + 基础 API  
+当前任务：P2.1 配置与依赖注入  
+最近完成：P1.5 Seed 数据脚本（2026-05-02）  
+下一任务：P2.1 配置与依赖注入（app/core/config.py + db/session.py + core/security.py 完整版）  
 
 ---
 
@@ -35,6 +35,7 @@
   原因：本机安装的 Windows 原生 PostgreSQL 15 占用了 5432，主机侧若使用 5432 会连到错误的数据库实例。  
   所有 `.env` 中的 `DB_PORT` 须为 5433。
 - **迁移驱动**：asyncpg（异步）。`migrations/env.py` 已恢复为 asyncpg 模式，禁止引入 psycopg2-binary。
+- **bcrypt 必须固定 4.0.x**：`bcrypt>=4.0,<4.1`。bcrypt 5.0 移除了 `__about__` 属性且对 >72B 密码强制报错，会导致 passlib 1.7.4 启动期 `detect_wrap_bug` 探测崩溃。已写入 `backend/pyproject.toml`。
 
 ## 已知设计偏差
 
@@ -90,6 +91,43 @@
 ---
 
 ## 已完成任务
+
+### P1.5 — Seed 数据脚本（2026-05-02）
+
+- 任务：P1.5 Seed 数据脚本
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - scripts/seed.py（新增）
+  - backend/app/core/security.py（新增，最小 hash_password / verify_password）
+  - backend/pyproject.toml（更新，固定 bcrypt 版本 4.0.x）
+- 新增内容：
+  - 3 角色：commander / admin / observer，permissions JSONB 按 DATA_CONTRACTS §4.1
+  - 3 用户：commander001 / admin001 / system（system 用户为 P6.7 自动派任务预留 created_by），bcrypt 哈希密码 password123
+  - 3 编队：空中编队 Alpha（10 UAV）/ 地面编队 Bravo（10 UGV）/ 水面编队 Charlie（5 USV）
+  - 25 机器人：UAV-001~010（DJI M300 RTK，has_yolo=true）+ UGV-001~010（Husky A200）+ USV-001~005（WAM-V 16），capability JSONB 严格按 §4.2 字段
+  - 1 场景：6 级地震演练（杭州西湖区，map_bounds + initial_state 含 25 台机器人初始位置 100% 电量）
+- 设计要点：
+  - 全程异步（asyncpg + create_async_engine + async_sessionmaker）
+  - Windows 显式设置 SelectorEventLoopPolicy
+  - 幂等：roles/users/user_roles/robots/scenarios 用 ON CONFLICT DO NOTHING；robot_groups 无 UNIQUE 约束，使用 select-then-insert
+  - 脚本自动 `os.chdir(BACKEND_DIR)`，确保 pydantic-settings 读到 `backend/.env`
+- 测试验证：
+  - SELECT count(*) FROM robots WHERE is_active → 25 ✓（10 uav + 10 ugv + 5 usv）
+  - users/roles/user_roles/robot_groups/scenarios → 3/3/3/3/1 ✓
+  - UAV-001 capability->>'has_yolo' → 'true' ✓
+  - commander permissions JSONB → 7 个权限串 ✓
+  - scenario.initial_state->'robots' jsonb_array_length → 25 ✓
+  - password_hash 长度 60（bcrypt $2b$ 标准格式）✓
+  - 重跑脚本：counts 不变，无报错（幂等 ✓）
+- 环境处理：
+  - venv 中 passlib + bcrypt 缺失，已安装 `passlib[bcrypt]>=1.7,<1.8` + 固定 `bcrypt==4.0.1`
+  - bcrypt 5.0 与 passlib 1.7.4 不兼容，已在 pyproject.toml 固定 `bcrypt>=4.0,<4.1`
+- Git 提交：
+  - commit message：feat: P1.5 seed initial roles users robots groups scenario
+  - push 状态：待执行
+- 下一步建议：
+  - P2.1 配置与依赖注入：补全 `app/core/config.py`（jwt 字段已就位）、新建 `app/db/session.py`（async session factory + FastAPI Depends）、扩展 `app/core/security.py` 加 JWT 编解码
 
 ### P1.4 — 修复数据库 DESC 索引方向（2026-05-02）
 

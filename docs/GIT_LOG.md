@@ -24,6 +24,26 @@
 
 ## 提交记录
 
+### 2026-05-02 — P1.5
+
+- 任务：P1.5 Seed 数据脚本
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P1.5 seed initial roles users robots groups scenario
+- Commit hash：（push 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - scripts/seed.py（新增）：3 角色 + 3 用户（含 system）+ 3 编队 + 25 机器人 + 1 场景，幂等执行
+  - backend/app/core/security.py（新增）：最小 hash_password / verify_password（bcrypt 12）
+  - backend/pyproject.toml：固定 bcrypt 版本 4.0.x（避免 5.0 与 passlib 1.7.4 不兼容）
+  - docs/PROJECT_CONTEXT.md §6：标记 P1 阶段完成
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-02 — P1.4
 
 - 任务：P1.4 修复数据库 DESC 索引方向

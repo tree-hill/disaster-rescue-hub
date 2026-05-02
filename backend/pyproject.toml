@@ -19,6 +19,8 @@ dependencies = [
     # 安全
     "python-jose[cryptography]>=3.3,<3.4",
     "passlib[bcrypt]>=1.7,<1.8",
+    # bcrypt 必须固定 4.0.x：5.0 移除 __about__ 且严格 72B 限制，与 passlib 1.7.4 不兼容
+    "bcrypt>=4.0,<4.1",
     # 日志
     "structlog>=24.1,<25.0",
     # 算法

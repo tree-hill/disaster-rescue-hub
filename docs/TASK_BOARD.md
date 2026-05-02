@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P1 数据层  
-当前任务：P1.5 Seed 数据脚本  
+当前阶段：P2 认证 + 基础 API  
+当前任务：P2.1 配置与依赖注入  
 任务来源：docs/BUILD_ORDER.md  
-备注：P1.4 已完成，DB 中 12 个索引已修正为 DESC 方向  
+备注：P1 数据层全部完成（P1.1~P1.5），seed 数据可用，alembic head=34b9faaa8fb0  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P1.5 Seed 数据脚本（scripts/seed.py：3 角色 + 2 用户 + 25 机器人 + 3 编队 + 1 场景）
+- [ ] P2.1 配置与依赖注入（补全 app/core/config.py + 新建 app/db/session.py + 扩展 app/core/security.py JWT）
 
 ### In Progress
 
@@ -63,6 +63,7 @@
 - [x] P1.3 修复与补验：Python 3.11 venv + 端口 5433 + asyncpg env.py（2026-05-02，Claude Code）
 - [x] P1.2/P1.3 契约一致性修复：server_default + 删冗余UniqueConstraint + 补28个Index + migration DESC（2026-05-02，Claude Code）
 - [x] P1.4 触发器与索引：新建 migration 34b9faaa8fb0，修正 DB 中 12 个 ASC→DESC 索引；补验触发器 4 条 + GIN 索引 4 个（2026-05-02，Claude Code）
+- [x] P1.5 Seed 数据脚本：3 角色 + 3 用户（含 system）+ 3 编队 + 25 机器人 + 1 场景，幂等可重跑（2026-05-02，Claude Code）
 
 ---
 
