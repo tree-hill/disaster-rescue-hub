@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P4.4 task list/detail/update/cancel/assignments + cancel_task intervention
-- Commit hash：(待 push 后回填)
+- Commit hash：7b3fcef
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
