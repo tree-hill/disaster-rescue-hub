@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P4 任务模块  
-当前任务：P4.4 其他任务接口（BUILD_ORDER §P4.4）  
-最近完成：P4.3 任务创建接口（POST /api/v1/tasks，权限 task:create；area service 层校验抛 422_TASK_INVALID_AREA_001；advisory lock 按年串行分配 T-YYYY-NNN；area_km2 > 1 触发 500m × 500m 网格分解，rectangle/polygon/circle 一律 bbox 平铺，子任务 code T-YYYY-NNN-CC，parent_id 关联；父+子同事务 commit；commit 后 push `task.created` WS 事件到 commander 房间；事件总线接入留 P4.5；27/27 自检全绿）（2026-05-04）  
-下一任务：P4.4 GET /tasks 分页 + GET /tasks/{id} 含 assignments + PUT /tasks/{id} 仅非终态 + POST /tasks/{id}/cancel + GET /tasks/{id}/assignments  
+当前任务：P4.5 事件总线基础（BUILD_ORDER §P4.5）  
+最近完成：P4.4 其他任务接口（GET /tasks 多过滤分页 + GET/{id} 含 assignments+auctions[]占位 + GET /{id}/assignments + PUT/{id} 非终态校验 + POST /{id}/cancel 走 status_machine.transit 同事务释放 active assignments + 写 intervention(cancel_task) + push task.cancelled；reason 沿用 422_INTERVENTION_REASON_INVALID_001；seed 加 task:read 给三角色 + robot:read 给 admin/observer；38/38 自检全绿）（2026-05-04）  
+下一任务：P4.5 `app/core/event_bus.py`（asyncio.Queue 发布订阅 + publish + subscribe）+ 把 task.created / task.cancelled 等部分事件改走总线再转推 WS  
 
 ---
 
@@ -91,6 +91,39 @@
 ---
 
 ## 已完成任务
+
+### P4.4 — 其他任务接口（2026-05-04）
+
+- 任务：P4.4（BUILD_ORDER §P4.4）
+- 执行工具：Claude Code
+- 修改类型：feat（含 seed 权限补全）
+- 涉及文件：
+  - `backend/app/api/v1/tasks.py`（扩展：新增 4 个路由 + 已有 POST 不变）
+  - `backend/app/services/task_service.py`（扩展：list_paginated / get_with_assignments / list_assignments / update / cancel + _validate_reason / _not_found 工厂）
+  - `backend/app/repositories/task.py`（扩展：find_paginated 多过滤）
+  - `backend/app/repositories/task_assignment.py`（新增）
+  - `backend/app/schemas/task.py`（扩展：TaskAssignmentRead / TaskDetailRead / TaskCancelRequest）
+  - `scripts/seed.py`（修改：commander/admin/observer 加 task:read；admin/observer 加 robot:read；observer 不再是空权限以满足只读）
+- 关键设计：
+  - **TaskDetailRead.auctions**：API_SPEC §3 GET /tasks/{id} 写「200 响应：TaskRead + assignments + auctions(摘要)」。AuctionRead schema 与 auctions 表的 service 写入路径属于 P5 调度模块；本任务返回 `auctions: list[dict] = []` 占位，前端契约保留键不破坏，P5 实装时再具体化为 list[AuctionRead]。与 P3.2 跳过 GET /robots/{id}/faults 同款「按字面跳过」策略。
+  - **cancel 流程**：严格按 BUSINESS_RULES §4.2 七步：1) reason 校验（沿用 RecallService._validate_reason 同款 422_INTERVENTION_REASON_INVALID_001）→ 2) 404 → 3) 已 CANCELLED 抛 409_TASK_ALREADY_CANCELLED_001（特化于通用 status_conflict）/ 其它终态抛 409_TASK_STATUS_CONFLICT_001 → 4) before_state 快照 → 5) status_machine.transit(CANCELLED, reason)（PENDING→CANCELLED 不动 completed_at；EXECUTING→CANCELLED 才置 completed_at，符合状态机时间戳规则）→ 6) release_active_for_task 批量 UPDATE → 7) after_state → 8) 写 intervention(cancel_task) → commit → 9) push task.cancelled。
+  - **PUT 终态拒绝**：直接用 `TERMINAL_TASK_STATUSES` 集合判断，不走 transit（PUT 不是状态转移），抛 409_TASK_STATUS_CONFLICT_001。仅修改 name/priority/sla_deadline；exclude_unset PATCH 语义。
+  - **release_active_for_task**：UPDATE … WHERE task_id=? AND is_active=TRUE，`synchronize_session=False` 避免 SQLAlchemy 在异步会话里做不必要的 ORM 同步；返回 rowcount，调用方可日志/审计。
+  - **list_paginated**：与 RobotRepository.find_paginated 同款（filters 列表 + count + items 两段执行），但对 status 支持 IN 多选（API_SPEC §3「status (可多选)」）；空 status_in 序列短路 → ([], 0)。sort 自定义留待前端有需求时再加，暂用 created_at DESC 默认。
+  - **seed 权限补全**：原 commander 缺 task:read（自己创建后立刻看不到列表）、admin/observer 完全没有读权限。本任务把读权限按角色合理化：observer = 只读（task:read + robot:read）；admin = observer 权限 + user:manage + system:admin（但仍不写任务）；commander = 全部任务/机器人写 + 切换算法。这一调整不变更 DATA_CONTRACTS §4.1 权限命名规范，仅改变示例角色的权限组合。
+- 测试验证：
+  - 38/38 自检全绿（临时脚本 `_check_p44.py`，通过后已删除，DB 清理 0 残留）：
+    - 列表 9 项：4 任务 setup / 无过滤 total / status=PENDING / status 多选无匹配 / priority / type / search ILIKE / created_by / pagination page+size / 无 token → 401
+    - 详情 4 项：GET /{id} TaskDetailRead 含 assignments=[] auctions=[] / 404_TASK_NOT_FOUND_001 / GET /{id}/assignments 空列表 / 404 守卫
+    - PUT 3 项：happy（name+priority 同时更新）/ 无权限 → 403 / 404
+    - cancel 业务 12 项：happy 200 + status=CANCELLED + completed_at 保持 null（PENDING→CANCELLED）/ assignment is_active=False + released_at / intervention 写入 + user_id + reason + before/after_state.assigned_robot_ids + before.status=PENDING + after.status=CANCELLED
+    - cancel WS 3 项：emitted 1 次 / payload 含 7 键（event_id,timestamp,task_id,task_code,cancelled_by_user_id,reason,intervention_id）/ room=commander
+    - cancel 错误路径 5 项：已取消 → 409_TASK_ALREADY_CANCELLED_001 / reason<5 → 422_INTERVENTION_REASON_INVALID_001 / reason 全空白 → 422 / 404 / admin 无 task:cancel → 403
+    - PUT 终态拒绝 1 项：cancel 后 PUT → 409_TASK_STATUS_CONFLICT_001
+    - 1 项：4 任务 setup
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：auctions 摘要字段返回空数组占位，待 P5 dispatch 实装；事件总线（push_event 直推 → bus.publish 转推）留 P4.5 重构
+- 下一步：P4.5 事件总线 + 把若干 service 直推 WS 改走总线
 
 ### P4.3 — 任务创建接口（2026-05-04）
 

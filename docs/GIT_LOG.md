@@ -24,6 +24,28 @@
 
 ## 提交记录
 
+### 2026-05-04 — P4.4
+
+- 任务：P4.4 其他任务接口（GET 列表 / 详情 / assignments + PUT + cancel）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P4.4 task list/detail/update/cancel/assignments + cancel_task intervention
+- Commit hash：(待 push 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/api/v1/tasks.py（扩展）：GET /tasks 多过滤 + Page[TaskRead] / GET /tasks/{id} TaskDetailRead 含 assignments+auctions[] / GET /tasks/{id}/assignments / PUT /tasks/{id} 仅非终态 / POST /tasks/{id}/cancel
+  - backend/app/services/task_service.py（扩展）：list_paginated / get_with_assignments / list_assignments / update（PATCH 语义 + 终态拒绝）/ cancel（reason 校验 → status_machine.transit → release_active_for_task → 写 intervention → push task.cancelled）+ _validate_reason / _not_found 工厂
+  - backend/app/repositories/task.py（扩展）：find_paginated（status_in / priority / type / created_by / search ILIKE）
+  - backend/app/repositories/task_assignment.py（新增）：save / find_by_task / release_active_for_task（批量 UPDATE，synchronize_session=False）
+  - backend/app/schemas/task.py（扩展）：TaskAssignmentRead / TaskDetailRead（含 auctions: list[dict] = [] 占位）/ TaskCancelRequest（reason max_length=500）
+  - scripts/seed.py（修改）：commander/admin/observer 加 task:read；admin/observer 加 robot:read（observer 不再空权限）
+- 自检：38/38 全绿（列表 9 + 详情 4 + PUT 3 + cancel 业务 12 + cancel WS 3 + cancel 错误路径 5 + PUT 终态拒绝 1 + setup 1），临时脚本验证后删除，DB 清理 0 残留
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P4.3
 
 - 任务：P4.3 任务创建接口

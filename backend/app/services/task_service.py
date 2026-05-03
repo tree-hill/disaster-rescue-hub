@@ -1,12 +1,15 @@
-"""任务业务编排层（P4.3 创建路径）。
+"""任务业务编排层（P4.3 创建路径 + P4.4 列表 / 详情 / 更新 / 取消 / 分配查询）。
 
 对照：
-- API_SPEC §3 POST /tasks
-- BUSINESS_RULES §6.3（任务类错误码：422_TASK_INVALID_AREA_001）+ §7（网格分解阈值
-  1 km²、切分粒度 500m × 500m）
-- DATA_CONTRACTS §1.8（tasks 表）+ §4.5（target_area JSONB 结构）+ §4.6
-  （required_capabilities）
-- WS_EVENTS §4 task.created（commander 房间）
+- API_SPEC §3（/tasks 全部接口）
+- BUSINESS_RULES §6.3（任务类错误码：422_TASK_INVALID_AREA_001 / 409_TASK_STATUS_CONFLICT_001
+  / 409_TASK_ALREADY_CANCELLED_001 / 404_TASK_NOT_FOUND_001）+ §6.5（reason 校验）
+  + §2.1（状态机）+ §4.1 / §4.2（HITL cancel_task 流程）+ §7（网格分解阈值 1 km²
+  + 切分粒度 500m × 500m）
+- DATA_CONTRACTS §1.8（tasks）+ §1.9（task_assignments）+ §1.12 / §4.8
+  （human_interventions before/after_state）+ §4.5 / §4.6（target_area /
+  required_capabilities）
+- WS_EVENTS §4 task.created / task.cancelled（commander 房间）
 
 设计取舍：
 - area_km2 / radius_m 的 > 0 业务校验放在 service 层，抛特化错误码
@@ -39,15 +42,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import (
     METERS_PER_DEGREE,
+    RECALL_REASON_MIN_LEN,
     TASK_CHILD_CODE_SEQ_WIDTH,
     TASK_CODE_SEQ_WIDTH,
     TASK_GRID_DECOMPOSE_THRESHOLD_KM2,
     TASK_GRID_TILE_METERS,
 )
 from app.core.exceptions import BusinessError
-from app.models.task import Task
+from app.models.intervention import HumanIntervention
+from app.models.task import Task, TaskAssignment
+from app.repositories.intervention import InterventionRepository
 from app.repositories.task import TaskRepository
-from app.schemas.task import TargetArea, TaskCreate
+from app.repositories.task_assignment import TaskAssignmentRepository
+from app.schemas.task import TargetArea, TaskCreate, TaskUpdate
+from app.services.task_status_machine import (
+    TERMINAL_TASK_STATUSES,
+    transit as transit_task,
+)
 from app.ws.events import push_event
 
 logger = logging.getLogger(__name__)
@@ -64,6 +75,35 @@ def _invalid_area(message: str, field: str = "target_area") -> BusinessError:
         http_status=422,
         details=[{"field": field, "code": "invalid_area", "message": message}],
     )
+
+
+def _not_found(task_id: UUID) -> BusinessError:
+    return BusinessError(
+        code="404_TASK_NOT_FOUND_001",
+        message="任务不存在",
+        http_status=404,
+        details=[{"field": "task_id", "code": "not_found", "message": str(task_id)}],
+    )
+
+
+def _validate_reason(reason: str) -> None:
+    """BUSINESS_RULES §4.3.1 + §6.5：reason ≥ 5 字符且非纯空白。
+
+    特化错误码 422_INTERVENTION_REASON_INVALID_001（与 RecallService 完全一致）。
+    """
+    if not isinstance(reason, str) or len(reason.strip()) < RECALL_REASON_MIN_LEN:
+        raise BusinessError(
+            code="422_INTERVENTION_REASON_INVALID_001",
+            message=f"reason 至少 {RECALL_REASON_MIN_LEN} 个非空白字符",
+            http_status=422,
+            details=[
+                {
+                    "field": "reason",
+                    "code": "too_short_or_blank",
+                    "message": f"strip 后长度 {len(reason.strip()) if isinstance(reason, str) else 0}",
+                }
+            ],
+        )
 
 
 def _validate_area(area: TargetArea) -> None:
@@ -224,6 +264,48 @@ class TaskService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.tasks = TaskRepository(session)
+        self.assignments = TaskAssignmentRepository(session)
+        self.interventions = InterventionRepository(session)
+
+    # ---------- 读 ----------
+
+    async def list_paginated(
+        self,
+        *,
+        status_in: list[str] | None,
+        priority: int | None,
+        type_: str | None,
+        created_by: UUID | None,
+        search: str | None,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[Task], int]:
+        return await self.tasks.find_paginated(
+            status_in=status_in,
+            priority=priority,
+            type_=type_,
+            created_by=created_by,
+            search=search,
+            page=page,
+            page_size=page_size,
+        )
+
+    async def get_with_assignments(
+        self, task_id: UUID
+    ) -> tuple[Task, list[TaskAssignment]]:
+        task = await self.tasks.find_by_id(task_id)
+        if task is None:
+            raise _not_found(task_id)
+        assignments = await self.assignments.find_by_task(task_id)
+        return task, assignments
+
+    async def list_assignments(self, task_id: UUID) -> list[TaskAssignment]:
+        # 404 守卫：任务不存在直接抛
+        if await self.tasks.find_by_id(task_id) is None:
+            raise _not_found(task_id)
+        return await self.assignments.find_by_task(task_id)
+
+    # ---------- 写 ----------
 
     async def create(self, payload: TaskCreate, *, created_by: UUID) -> Task:
         """创建任务（含可选网格分解）。
@@ -307,6 +389,152 @@ class TaskService:
                 child_count = len(tiles)
 
         return parent, child_count
+
+    async def update(self, task_id: UUID, payload: TaskUpdate) -> Task:
+        """PUT /tasks/{id}：仅 name / priority / sla_deadline，且任务非终态。
+
+        终态（COMPLETED / FAILED / CANCELLED）→ 409_TASK_STATUS_CONFLICT_001
+        （API_SPEC §3 PUT 写「409 任务状态不允许修改」；BUSINESS_RULES §6.3 字面）。
+        """
+        task = await self.tasks.find_by_id(task_id)
+        if task is None:
+            raise _not_found(task_id)
+        if task.status in TERMINAL_TASK_STATUSES:
+            raise BusinessError(
+                code="409_TASK_STATUS_CONFLICT_001",
+                message=f"任务处于终态 {task.status}，不允许修改",
+                http_status=409,
+                details=[
+                    {
+                        "field": "task.status",
+                        "code": "current_status",
+                        "message": task.status,
+                    }
+                ],
+            )
+
+        patch = payload.model_dump(exclude_unset=True)
+        if "name" in patch and patch["name"] is not None:
+            task.name = patch["name"]
+        if "priority" in patch and patch["priority"] is not None:
+            task.priority = patch["priority"]
+        if "sla_deadline" in patch:  # 允许显式清空
+            task.sla_deadline = patch["sla_deadline"]
+
+        await self.session.commit()
+        await self.session.refresh(task)
+        return task
+
+    async def cancel(
+        self, task_id: UUID, *, user_id: UUID, reason: str
+    ) -> Task:
+        """POST /tasks/{id}/cancel：HITL 取消任务。
+
+        流程（BUSINESS_RULES §4.2 + §2.1）：
+          1. reason ≥5 字符且非纯空白 → 422_INTERVENTION_REASON_INVALID_001
+          2. 任务存在 → 404_TASK_NOT_FOUND_001
+          3. 已 CANCELLED → 409_TASK_ALREADY_CANCELLED_001（特化于通用 status_conflict）
+          4. 其他终态（COMPLETED / FAILED）→ 409_TASK_STATUS_CONFLICT_001
+          5. before_state 快照（assigned_robot_ids 来自 active assignments）
+          6. status_machine.transit → CANCELLED（同时按规则置 completed_at）
+          7. 释放所有 active assignments（is_active=FALSE，released_at=NOW）
+          8. after_state（status=CANCELLED, assigned_robot_ids=[]）
+          9. 写 human_interventions(intervention_type='cancel_task')，同事务
+          10. commit
+          11. push_event task.cancelled（commander 房间）
+        """
+        _validate_reason(reason)
+
+        task = await self.tasks.find_by_id(task_id)
+        if task is None:
+            raise _not_found(task_id)
+
+        if task.status == "CANCELLED":
+            raise BusinessError(
+                code="409_TASK_ALREADY_CANCELLED_001",
+                message="任务已被取消",
+                http_status=409,
+                details=[
+                    {
+                        "field": "task.status",
+                        "code": "current_status",
+                        "message": task.status,
+                    }
+                ],
+            )
+        if task.status in TERMINAL_TASK_STATUSES:
+            raise BusinessError(
+                code="409_TASK_STATUS_CONFLICT_001",
+                message=f"任务处于终态 {task.status}，不允许取消",
+                http_status=409,
+                details=[
+                    {
+                        "field": "task.status",
+                        "code": "current_status",
+                        "message": task.status,
+                    }
+                ],
+            )
+
+        active_before = await self.assignments.find_by_task(task_id, only_active=True)
+        before_state = {
+            "task_id": str(task.id),
+            "task_code": task.code,
+            "status": task.status,
+            "assigned_robot_ids": [str(a.robot_id) for a in active_before],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # 6) 状态机转移（任意非终态 → CANCELLED 都被 TASK_TRANSITIONS 允许）
+        transit_task(task, "CANCELLED", reason=reason)
+
+        # 7) 释放 active assignments
+        now = datetime.now(timezone.utc)
+        await self.assignments.release_active_for_task(task_id, released_at=now)
+
+        # 8) after_state
+        after_state = {
+            "task_id": str(task.id),
+            "task_code": task.code,
+            "status": "CANCELLED",
+            "assigned_robot_ids": [],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # 9) 写 intervention（同事务）
+        intervention = HumanIntervention(
+            user_id=user_id,
+            intervention_type="cancel_task",
+            target_task_id=task.id,
+            target_robot_id=None,
+            before_state=before_state,
+            after_state=after_state,
+            reason=reason,
+        )
+        await self.interventions.save(intervention)
+
+        await self.session.commit()
+        await self.session.refresh(task)
+
+        # 11) emit task.cancelled（commit 之后；失败仅日志）
+        try:
+            await push_event(
+                "task.cancelled",
+                {
+                    "task_id": str(task.id),
+                    "task_code": task.code,
+                    "cancelled_by_user_id": str(user_id),
+                    "reason": reason,
+                    "intervention_id": str(intervention.id),
+                },
+                room="commander",
+            )
+        except Exception:
+            logger.exception(
+                "task_cancelled_emit_failed", extra={"task_id": str(task.id)}
+            )
+
+        return task
 
     async def _emit_created(self, parent: Task, child_count: int) -> None:
         try:

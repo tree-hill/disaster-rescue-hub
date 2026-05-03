@@ -102,3 +102,40 @@ class TaskRead(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+
+
+class TaskAssignmentRead(BaseModel):
+    """任务-机器人分配记录。对照 DATA_CONTRACTS §1.9 + API_SPEC §3 GET /tasks/{id}/assignments。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    task_id: UUID
+    robot_id: UUID
+    auction_id: UUID | None = None
+    assigned_at: datetime
+    released_at: datetime | None = None
+    is_active: bool
+
+
+class TaskDetailRead(TaskRead):
+    """GET /tasks/{id} 扩展响应。
+
+    `assignments`：当前任务的所有分配记录（含已释放的历史，按 assigned_at DESC）。
+    `auctions`：API_SPEC §3 写「auctions: AuctionRead[](摘要)」，但 AuctionRead /
+    auctions 表的 service 写入路径属于 P5 调度模块；本任务暂返回空列表占位，P5
+    实装时再具体化为 list[AuctionRead]，前端契约保留键不破坏。
+    """
+
+    assignments: list[TaskAssignmentRead] = []
+    auctions: list[dict] = []
+
+
+class TaskCancelRequest(BaseModel):
+    """POST /tasks/{id}/cancel 请求体。
+
+    reason 长度 5–500 字符；与 RecallRequest 同模式：max 由 schema 拦截，min 在
+    service 层抛 422_INTERVENTION_REASON_INVALID_001（BUSINESS_RULES §4.3.1）。
+    """
+
+    reason: str = Field(..., max_length=500)

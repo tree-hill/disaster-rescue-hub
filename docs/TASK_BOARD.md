@@ -8,9 +8,9 @@
 ## 当前阶段
 
 当前阶段：P4 任务模块  
-当前任务：P4.4 其他任务接口（下一任务）  
+当前任务：P4.5 事件总线基础（下一任务）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P4.3 完成（POST /api/v1/tasks：area_km2 / 几何字段 service 层校验抛特化 422_TASK_INVALID_AREA_001；按年 advisory lock 串行分配 T-YYYY-NNN；area_km2 > 1 触发 500m × 500m 网格分解，rectangle/polygon/circle 一律 bbox 平铺；父+子任务同事务持久化，commit 后 push `task.created` 到 commander 房间；27/27 自检全绿，DB 清理后 0 残留）。事件总线接入留给 P4.5。  
+备注：P4.4 完成（GET /tasks 多过滤 + 分页、GET /{id} 含 assignments + auctions=[] 占位、GET /{id}/assignments、PUT /{id} 仅 name/priority/sla_deadline 且非终态、POST /{id}/cancel 走状态机 transit + 同事务释放 active assignments + 写 intervention(cancel_task) + WS task.cancelled；reason 沿用 422_INTERVENTION_REASON_INVALID_001；seed.py 给 commander/admin/observer 加 task:read + 给 admin/observer 加 robot:read；38/38 自检全绿，DB 清理后 0 残留）。auctions 摘要（P5）+ 事件总线（P4.5）尚未接入。  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P4.4 其他任务接口（BUILD_ORDER §P4.4）：GET /tasks（分页+状态过滤）/ GET /tasks/{id}（含 assignments）/ PUT /tasks/{id}（仅 name/priority/sla_deadline 且非终态）/ POST /tasks/{id}/cancel（同事务写 intervention + 广播 task.cancelled）/ GET /tasks/{id}/assignments
+- [ ] P4.5 事件总线基础（BUILD_ORDER §P4.5）：`app/core/event_bus.py`（asyncio.Queue 发布订阅 + publish + subscribe）+ 与 WS 集成（部分事件如 task.created 自动转推 WS）
 
 ### In Progress
 
@@ -52,6 +52,7 @@
 
 ### Done
 
+- [x] P4.4 其他任务接口：`api/v1/tasks.py` 5 个接口（GET 列表多过滤+分页 / GET /{id} TaskDetailRead 含 assignments+auctions[]占位 / GET /{id}/assignments / PUT /{id} 非终态 / POST /{id}/cancel）+ `services/task_service.py` 5 个方法（list_paginated / get_with_assignments / list_assignments / update / cancel 走状态机 transit + 释放 active assignments + 写 intervention + WS task.cancelled）+ `repositories/task.py` find_paginated（status_in / priority / type / created_by / search）+ `repositories/task_assignment.py`（save / find_by_task / release_active_for_task 批量更新）+ `schemas/task.py` 加 TaskAssignmentRead / TaskDetailRead / TaskCancelRequest + `scripts/seed.py` 给 commander/admin/observer 加 task:read，admin/observer 加 robot:read；38/38 自检全绿（含 WS payload 7 键 + intervention before/after_state + assignment 释放）（2026-05-04，Claude Code）
 - [x] P4.3 任务创建接口：`api/v1/tasks.py` POST /tasks + `services/task_service.py`（area service 层校验 → 422_TASK_INVALID_AREA_001 / advisory lock 按年分配 T-YYYY-NNN root code 重试 3 次 / area_km2 > 1 触发 500m × 500m 网格分解（rectangle/polygon/circle 共用 bbox 平铺，子任务 code T-YYYY-NNN-CC，parent_id 关联） / 父+子同事务 commit / 失败回滚 / commit 后 push WS task.created 到 commander 房间 child_count）+ `core/constants.py` 新增 4 个任务常量 + 移除 `schemas/task.py` 中 area_km2/radius_m 的 schema 层 gt=0；27/27 自检全绿（纯函数 11 + advisory lock 串行 1 + HTTP 15）（2026-05-04，Claude Code）
 - [x] P4.2 任务状态机服务：`services/task_status_machine.py`（TASK_TRANSITIONS 完全对齐 BUSINESS_RULES §2.1.3 + can_transit 纯函数 + transit 时间戳副作用 + 终态/跨级跳转拒绝 409_TASK_STATUS_CONFLICT_001 + 结构化日志 task_status_transit）；27/27 自检全绿（6×6 矩阵 + 9 happy path + 11 reject + error details 包含 from/to/reason）（2026-05-04，Claude Code）
 - [x] P4.1 任务 Schemas + Repository：`schemas/task.py`（TargetArea + TaskRequiredCapabilities + TaskCreate/Read/Update，对照 DATA_CONTRACTS §1.8/§4.5/§4.6/§5）+ `repositories/task.py`（save/find_by_id/find_by_status[支持 str | Sequence[str]]/find_pending[priority ASC, created_at ASC]，事务边界 add+flush）；17/17 自检全绿（schema 静态校验 7 项 + repo 9 项 + rollback 清理 1 项）（2026-05-03，Claude Code）

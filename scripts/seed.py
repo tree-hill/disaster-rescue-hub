@@ -58,6 +58,7 @@ ROLES_DEF = [
         "name": "commander",
         "description": "指挥员：创建/取消任务，改派/召回机器人，切换调度算法",
         "permissions": [
+            "task:read",
             "task:create",
             "task:cancel",
             "task:update",
@@ -71,12 +72,12 @@ ROLES_DEF = [
     {
         "name": "admin",
         "description": "管理员：用户与系统管理",
-        "permissions": ["user:manage", "system:admin"],
+        "permissions": ["task:read", "robot:read", "user:manage", "system:admin"],
     },
     {
         "name": "observer",
         "description": "观察员：只读",
-        "permissions": [],
+        "permissions": ["task:read", "robot:read"],
     },
 ]
 
