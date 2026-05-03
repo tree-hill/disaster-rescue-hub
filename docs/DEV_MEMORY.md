@@ -173,7 +173,8 @@
   - 沿用 backend/.venv，无新增依赖
 - Git 提交：
   - commit message：feat: P3.6 robot recall + fault flow with intervention and ws events
-  - push 状态：待执行
+  - commit hash：3548771
+  - push 状态：已 push 至 origin/main
 - 下一步建议：
   - P4.1：实装 task 模块基础设施
     1. `schemas/task.py`：TaskCreate / TaskRead / TaskUpdate / TaskRequiredCapabilities（对照 DATA_CONTRACTS §1.8 + §4.5 target_area + §4.6 required_capabilities）

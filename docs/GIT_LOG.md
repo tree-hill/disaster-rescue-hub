@@ -30,8 +30,8 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P3.6 robot recall + fault flow with intervention and ws events
-- Commit hash：（push 后回填）
-- 是否 push：待执行
+- Commit hash：3548771
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - backend/app/schemas/intervention.py（新增）：RecallRequest（max_length=500，min_length 让 service 抛特化错误码）+ RecallResponse{intervention_id, recall_eta_sec}
