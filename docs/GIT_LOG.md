@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P4.2 task status machine with timestamp side effects
-- Commit hash：(待 push 后回填)
+- Commit hash：9271dc1
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
