@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P4 任务模块  
-当前任务：P4.2 任务状态机服务（BUILD_ORDER §P4.2）  
-最近完成：P4.1 任务 Schemas + Repository（`schemas/task.py` TargetArea / TaskRequiredCapabilities / TaskCreate / TaskUpdate / TaskRead 严格对照 DATA_CONTRACTS §1.8/§4.5/§4.6/§5；`repositories/task.py` save/find_by_id/find_by_status/find_pending，事务边界 add+flush；find_pending 按 priority ASC + created_at ASC 对齐 idx_tasks_priority；17/17 自检全绿）（2026-05-03）  
-下一任务：P4.2 `services/task_status_machine.py`（TASK_TRANSITIONS / can_transit / transit 同事务历史日志，409_TASK_STATUS_CONFLICT_001）  
+当前任务：P4.3 任务创建接口（BUILD_ORDER §P4.3）  
+最近完成：P4.2 任务状态机服务（`services/task_status_machine.py`：TASK_TRANSITIONS 严格对齐 BUSINESS_RULES §2.1.3；transit 在 ASSIGNED→EXECUTING 设 started_at、EXECUTING→{COMPLETED,FAILED,CANCELLED} 设 completed_at、EXECUTING→EXECUTING 改派保留 started_at；非法/终态/跨级跳转抛 409_TASK_STATUS_CONFLICT_001；释放 assignment/WS push/intervention 由调用方负责；27/27 自检全绿）（2026-05-04）  
+下一任务：P4.3 POST /tasks（area_km2>0 422、自动 code T-YYYY-NNN、area_km2>1 网格 500m×500m 分解、TaskCreatedEvent 发布、广播 task.created）  
 
 ---
 
@@ -91,6 +91,30 @@
 ---
 
 ## 已完成任务
+
+### P4.2 — 任务状态机服务（2026-05-04）
+
+- 任务：P4.2（BUILD_ORDER §P4.2）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - `backend/app/services/task_status_machine.py`（新增）
+- 关键设计：
+  - TASK_TRANSITIONS 严格对齐 BUSINESS_RULES §2.1.3：PENDING→{ASSIGNED,CANCELLED}；ASSIGNED→{EXECUTING,CANCELLED,PENDING}；EXECUTING→{COMPLETED,FAILED,CANCELLED,EXECUTING}；COMPLETED/FAILED/CANCELLED 终态。
+  - 状态机内聚：transit 只做「转移合法性 + 修改 task.status + 时间戳副作用 + 结构化日志」；释放 assignment / WS push / 写 intervention 由调用方（P4.3/P4.4/P5）负责，避免与上层服务耦合，且自动路径与 HITL 路径共用同一入口。
+  - 时间戳：ASSIGNED→EXECUTING 设 started_at（仅当为 None，避免 EXECUTING→EXECUTING 改派覆盖原值）；EXECUTING→{COMPLETED,FAILED,CANCELLED} 设 completed_at；其它合法转移仅改 status，updated_at 由 DB 触发器 set_timestamp_tasks 处理。
+  - 历史日志取舍：DATA_CONTRACTS 未定义 task_status_history 表（HITL 路径已有 human_interventions），暂沿用 RobotAgent.transit 的结构化 logger.info("task_status_transit", from/to/reason/task_id/code) 模式；后续若要补持久化历史表，只需在 transit 内追加 repo.append() 即可，不影响接口。
+  - 错误码：所有非法转移（含未知 from/to）统一抛 BusinessError(409_TASK_STATUS_CONFLICT_001, http_status=409)，details 同时包含 current_status / target_status / transit_reason 三段。
+  - 事务边界：transit 不 commit / 不 flush，仅修改 ORM 对象属性；调用方持有 session，确保「状态变更」与下游副作用（assignment 释放、intervention 写入）在同一事务内（INV-G）。
+- 测试验证：
+  - 27/27 自检全绿（临时脚本 `_check_p42.py`，通过后已删除，无 DB 依赖）：
+    - 矩阵 6 项：TASK_TRANSITIONS 与 BUSINESS_RULES §2.1.3 完全相等 / VALID = 6 / TERMINAL = {COMPLETED,FAILED,CANCELLED} / can_transit 6×6 全表 / 未知 from / 未知 to
+    - happy path 9 项：PENDING→ASSIGNED status only / ASSIGNED→EXECUTING 设 started_at / EXECUTING→EXECUTING 保留 started_at / EXECUTING→{COMPLETED,FAILED,CANCELLED} 设 completed_at（3 项）/ {ASSIGNED,PENDING}→CANCELLED 不动时间戳 / ASSIGNED→PENDING 改派回环
+    - reject 11 项：跨级 PENDING→{COMPLETED,EXECUTING,FAILED}、ASSIGNED→{COMPLETED,FAILED}、终态 COMPLETED→{PENDING,EXECUTING}、FAILED→ASSIGNED、CANCELLED→PENDING、未知 target/from
+    - 错误响应 1 项：BusinessError.details 含 from/to/reason 三段
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：暂无
+- 下一步：P4.3 POST /tasks 接口 + 网格分解 + TaskCreatedEvent
 
 ### P4.1 — 任务 Schemas + Repository（2026-05-03）
 

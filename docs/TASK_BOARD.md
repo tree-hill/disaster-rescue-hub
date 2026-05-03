@@ -8,9 +8,9 @@
 ## 当前阶段
 
 当前阶段：P4 任务模块  
-当前任务：P4.2 任务状态机服务（下一任务）  
+当前任务：P4.3 任务创建接口（下一任务）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P4.1 完成（`schemas/task.py` 含 TargetArea / TaskRequiredCapabilities / TaskCreate / TaskUpdate / TaskRead，`repositories/task.py` 含 save / find_by_id / find_by_status / find_pending；事务边界 add+flush，find_pending 按 priority ASC + created_at ASC 与 idx_tasks_priority 对齐；17/17 自检全绿，rollback 不污染 DB）。下一步进入 P4.2 状态机。  
+备注：P4.2 完成（`services/task_status_machine.py`：TASK_TRANSITIONS / can_transit / transit；BUSINESS_RULES §2.1 完整覆盖；ASSIGNED→EXECUTING 设 started_at、EXECUTING→{COMPLETED,FAILED,CANCELLED} 设 completed_at、EXECUTING→EXECUTING 改派保留 started_at；非法转移抛 409_TASK_STATUS_CONFLICT_001；27/27 自检全绿，纯内存无 DB）。释放 assignment / WS push / intervention 写入由调用方负责（P4.3/P4.4/P5）。  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P4.2 任务状态机服务（BUILD_ORDER §P4.2）：`services/task_status_machine.py`（TASK_TRANSITIONS / can_transit / transit + 同事务历史日志），不允许的转移抛 `409_TASK_STATUS_CONFLICT_001`
+- [ ] P4.3 任务创建接口（BUILD_ORDER §P4.3）：POST /tasks（area_km2>0 → 422、自动 code T-YYYY-NNN、area_km2>1 网格 500m × 500m 分解、写 tasks、发布 TaskCreatedEvent）
 
 ### In Progress
 
@@ -52,6 +52,7 @@
 
 ### Done
 
+- [x] P4.2 任务状态机服务：`services/task_status_machine.py`（TASK_TRANSITIONS 完全对齐 BUSINESS_RULES §2.1.3 + can_transit 纯函数 + transit 时间戳副作用 + 终态/跨级跳转拒绝 409_TASK_STATUS_CONFLICT_001 + 结构化日志 task_status_transit）；27/27 自检全绿（6×6 矩阵 + 9 happy path + 11 reject + error details 包含 from/to/reason）（2026-05-04，Claude Code）
 - [x] P4.1 任务 Schemas + Repository：`schemas/task.py`（TargetArea + TaskRequiredCapabilities + TaskCreate/Read/Update，对照 DATA_CONTRACTS §1.8/§4.5/§4.6/§5）+ `repositories/task.py`（save/find_by_id/find_by_status[支持 str | Sequence[str]]/find_pending[priority ASC, created_at ASC]，事务边界 add+flush）；17/17 自检全绿（schema 静态校验 7 项 + repo 9 项 + rollback 清理 1 项）（2026-05-03，Claude Code）
 
 - [x] P0.1 创建仓库 + 目录结构（2026-05-02，Claude Code）

@@ -24,6 +24,23 @@
 
 ## 提交记录
 
+### 2026-05-04 — P4.2
+
+- 任务：P4.2 任务状态机服务
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P4.2 task status machine with timestamp side effects
+- Commit hash：(待 push 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/services/task_status_machine.py（新增）：TASK_TRANSITIONS / VALID_TASK_STATUSES / TERMINAL_TASK_STATUSES / can_transit() / transit(task, target, *, reason=)；时间戳副作用按 BUSINESS_RULES §2.1.1 实施；非法转移统一抛 BusinessError(409_TASK_STATUS_CONFLICT_001)；结构化日志 task_status_transit
+- 自检：27/27 全绿（矩阵 6 + happy 9 + reject 11 + error details 1），临时脚本验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-03 — P4.1
 
 - 任务：P4.1 任务 Schemas + Repository
