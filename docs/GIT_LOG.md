@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P4.1 task schemas + repository
-- Commit hash：(待 push 后回填)
+- Commit hash：442caf9
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
