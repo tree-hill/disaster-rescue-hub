@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P4.3 POST /tasks with area validation, year-scoped code allocation, 500m grid decompose
-- Commit hash：(待 push 后回填)
+- Commit hash：203c74a
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
