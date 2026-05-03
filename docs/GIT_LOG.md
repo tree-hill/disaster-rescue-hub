@@ -24,6 +24,26 @@
 
 ## 提交记录
 
+### 2026-05-04 — P4.5
+
+- 任务：P4.5 事件总线基础
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P4.5 in-process event bus + WS bridge for task.created/cancelled
+- Commit hash：(待 push 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/core/event_bus.py（新增）：EventBus 单例 + asyncio.Queue + 后台 dispatcher + publish / subscribe 幂等 + unsubscribe + handler 异常隔离 + start/stop 优雅退出 + reset_for_tests
+  - backend/app/ws/event_bridge.py（新增）：register_ws_relays 注册 task.created → push_event(commander) / task.cancelled → push_event(commander) 转推 handler
+  - backend/app/services/task_service.py（修改）：_emit_created / cancel 内的 push_event 改为 bus.publish；service 层不再直接依赖 WS 协议层
+  - backend/app/main.py（修改）：lifespan startup = bus → agents → broadcaster；shutdown 反向；register_ws_relays(bus) 在 bus.start() 之前
+- 自检：22/22 全绿（unit 13 + e2e 9，含 publish-before-start 丢弃 / 重复 start/stop no-op / 异常隔离 / 多 handler 并发 / 端到端 bus→bridge→sio.emit + payload 7 键），临时脚本验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P4.4
 
 - 任务：P4.4 其他任务接口（GET 列表 / 详情 / assignments + PUT + cancel）

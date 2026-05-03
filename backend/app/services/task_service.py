@@ -23,10 +23,11 @@
   500m × 500m 平铺；polygon / circle 的「真实形状裁剪」留给 P5+ 调度算法。
   decomposition 仅当 area_km2 > 1.0 触发；切到 1×1 的退化情形（单 tile）也认为
   无需分解。
-- 事件总线：P4.5 才实装 `app/core/event_bus.py`；本任务保持与 P3.6 recall 一致的
-  push_event 直推模式，commit 之后再 emit。P4.5 接入事件总线时只需把这里的
-  push_event 调用换成 bus.publish，订阅端在 broadcaster / 拍卖触发器里自行
-  处理。
+- 事件总线（P4.5）：task.created / task.cancelled 经 `app/core/event_bus.py`
+  publish → `app/ws/event_bridge.py` 转推 → `push_event` → `sio.emit`。
+  service 层不再直接依赖 WS 协议层；后续接审计 sink / Kafka 中继只需在
+  bus.subscribe 注册新 handler。commit 之后才 publish，避免在事务回滚时已
+  发布事件造成幻觉。
 """
 from __future__ import annotations
 
@@ -48,6 +49,7 @@ from app.core.constants import (
     TASK_GRID_DECOMPOSE_THRESHOLD_KM2,
     TASK_GRID_TILE_METERS,
 )
+from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
 from app.models.intervention import HumanIntervention
 from app.models.task import Task, TaskAssignment
@@ -59,7 +61,6 @@ from app.services.task_status_machine import (
     TERMINAL_TASK_STATUSES,
     transit as transit_task,
 )
-from app.ws.events import push_event
 
 logger = logging.getLogger(__name__)
 
@@ -516,9 +517,9 @@ class TaskService:
         await self.session.commit()
         await self.session.refresh(task)
 
-        # 11) emit task.cancelled（commit 之后；失败仅日志）
+        # 11) publish task.cancelled（commit 之后；失败仅日志，bus → bridge → push_event）
         try:
-            await push_event(
+            await get_event_bus().publish(
                 "task.cancelled",
                 {
                     "task_id": str(task.id),
@@ -527,18 +528,17 @@ class TaskService:
                     "reason": reason,
                     "intervention_id": str(intervention.id),
                 },
-                room="commander",
             )
         except Exception:
             logger.exception(
-                "task_cancelled_emit_failed", extra={"task_id": str(task.id)}
+                "task_cancelled_publish_failed", extra={"task_id": str(task.id)}
             )
 
         return task
 
     async def _emit_created(self, parent: Task, child_count: int) -> None:
         try:
-            await push_event(
+            await get_event_bus().publish(
                 "task.created",
                 {
                     "task_id": str(parent.id),
@@ -550,9 +550,8 @@ class TaskService:
                     "created_by": str(parent.created_by),
                     "child_count": child_count,
                 },
-                room="commander",
             )
-        except Exception:  # WS 推送失败不影响主流程；写库已提交
+        except Exception:
             logger.exception(
-                "task_created_emit_failed", extra={"task_id": str(parent.id)}
+                "task_created_publish_failed", extra={"task_id": str(parent.id)}
             )

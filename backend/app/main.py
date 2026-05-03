@@ -14,10 +14,12 @@ from fastapi.responses import JSONResponse
 from app.agents.manager import get_agent_manager
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
 from app.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from app.ws import handlers as ws_handlers
 from app.ws.broadcaster import get_broadcaster
+from app.ws.event_bridge import register_ws_relays
 from app.ws.server import SOCKETIO_PATH, sio
 
 logger = logging.getLogger(__name__)
@@ -32,9 +34,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     - 本地开发想看 Agent 跑：在 backend/.env 显式 MOCK_AGENTS_ENABLED=true
 
     顺序：
-    - startup：先 AgentManager（确保有数据可读），再 PositionBroadcaster
-    - shutdown：先停 broadcaster（不再读 Agent），再停 AgentManager
+    - startup：EventBus（注册 WS 转推 handler）→ AgentManager → PositionBroadcaster
+    - shutdown：先停 broadcaster（不再读 Agent），再停 AgentManager，最后停 EventBus
+      （让 service 层晚发布的最后一波 task.* 事件能被 dispatch loop 消费完）
     """
+    bus = get_event_bus()
+    register_ws_relays(bus)
+    await bus.start()
     if settings.mock_agents_enabled:
         await get_agent_manager().start_all()
         await get_broadcaster().start()
@@ -44,6 +50,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.mock_agents_enabled:
             await get_broadcaster().stop()
             await get_agent_manager().stop_all()
+        await bus.stop()
 
 
 app = FastAPI(

@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：P4 任务模块  
-当前任务：P4.5 事件总线基础（BUILD_ORDER §P4.5）  
-最近完成：P4.4 其他任务接口（GET /tasks 多过滤分页 + GET/{id} 含 assignments+auctions[]占位 + GET /{id}/assignments + PUT/{id} 非终态校验 + POST /{id}/cancel 走 status_machine.transit 同事务释放 active assignments + 写 intervention(cancel_task) + push task.cancelled；reason 沿用 422_INTERVENTION_REASON_INVALID_001；seed 加 task:read 给三角色 + robot:read 给 admin/observer；38/38 自检全绿）（2026-05-04）  
-下一任务：P4.5 `app/core/event_bus.py`（asyncio.Queue 发布订阅 + publish + subscribe）+ 把 task.created / task.cancelled 等部分事件改走总线再转推 WS  
+当前阶段：**P4 任务模块完整收口**，进入 P5 调度算法  
+当前任务：P5.1 拍卖触发器（BUILD_ORDER §P5.1）  
+最近完成：P4.5 事件总线基础（`app/core/event_bus.py` EventBus 单例 + asyncio.Queue + 后台 dispatcher 协程 + publish/subscribe 幂等 + handler 异常 logger.exception 隔离 + start/stop 优雅退出；`app/ws/event_bridge.py` register_ws_relays 把 task.created/cancelled 转推到 push_event；task_service 改用 bus.publish；lifespan 启动顺序 bus→agents→broadcaster，关闭反向；22/22 自检全绿）（2026-05-04）  
+下一任务：P5.1 拍卖触发器（监听 TaskCreatedEvent 自动 start_auction）  
 
 ---
 
@@ -91,6 +91,34 @@
 ---
 
 ## 已完成任务
+
+### P4.5 — 事件总线基础（2026-05-04）
+
+- 任务：P4.5（BUILD_ORDER §P4.5）
+- 执行工具：Claude Code
+- 修改类型：feat（含 task_service 解耦重构）
+- 涉及文件：
+  - `backend/app/core/event_bus.py`（新增）
+  - `backend/app/ws/event_bridge.py`（新增）
+  - `backend/app/services/task_service.py`（修改：push_event → bus.publish 解耦）
+  - `backend/app/main.py`（修改：lifespan 加 bus 启停 + register_ws_relays）
+- 关键设计：
+  - **EventBus 与 AgentManager 同款生命周期**：单例 + start/stop + reset_for_tests + 后台 dispatch 协程；asyncio 对象（Queue）在 start() 而非 __init__ 创建，避免跨事件循环绑定问题（毕设演示中可重复用 reset_for_tests 跨自检）。
+  - **publish 是 fire-and-forget**：put 进 queue 立即返回，service 不阻塞等 handler。HTTP 响应不会因 WS 慢而拖慢；handler 异常 logger.exception 写日志，不影响其它 handler 与后续事件（asyncio.gather(return_exceptions=False) + _safe_call try/except）。
+  - **publish 未启动 → 丢弃 + WARNING**：与「静默累积」相比更明显，便于排查 lifespan 漏启动；与 ASGITransport 测试场景吻合（自检显式 bus.start()）。
+  - **subscribe 幂等**：同一 (event_type, handler) 重复注册只保留一份，让 register_ws_relays 可被多次调用而不重复转推。
+  - **stop 优雅退出**：投哨兵 ('__stop__', {}) → wait_for(timeout) → 超时 cancel；再清空 _task / _queue / _started=False。重复 stop no-op。
+  - **WS bridge 边界**：领域事件名直接复用为 WS 事件名（task.created / task.cancelled），房间默认 commander；event_id / timestamp 由 push_event 注入，bus 内部不掺协议字段。
+  - **范围聚焦**：本任务只把 task.* 事件接入总线；robot.recall_initiated / recall_completed / fault_occurred / state_changed 仍走 RobotAgent / RecallService 直推 push_event，避免动 P3 已上线的协程；P5 dispatch 落地时一并迁移。
+  - **lifespan 顺序**：startup = bus → agents → broadcaster；shutdown = broadcaster → agents → bus。bus 最后停，让最后一波 service 发布的事件能被 dispatch loop 消费完。
+  - **commit 后才 publish**：避免事务回滚时事件已发布造成 WS / 审计 sink 与 DB 不一致。
+- 测试验证：
+  - 22/22 自检全绿（临时脚本 `_check_p45.py`，通过后已删除，DB 清理 0 残留）：
+    - 单元 13 项：subscribe 幂等去重 / 多事件类型路由 / publish-before-start 丢弃 / start sets started / 重复 start no-op / evt.x 多 handler 并发 / evt.y 路由独立 / handler 异常隔离不阻塞其它 / bus 异常后仍运转 / unsubscribe 去除 / stop sets started=False / publish-after-stop 丢弃 / 重复 stop no-op
+    - 端到端 9 项：register_ws_relays 注册 task.created/cancelled / POST /tasks 201 / task.created 经 bus → bridge → sio.emit / payload 含 event_id+timestamp+task_id+task_code+child_count / room=commander / POST cancel 200 / task.cancelled 同链路 / payload 含 7 键（event_id,timestamp,task_id,task_code,cancelled_by_user_id,reason,intervention_id）
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：暂无；robot.* 事件迁移留 P5
+- 下一步：P5.1 拍卖触发器（订阅 TaskCreatedEvent → start_auction）
 
 ### P4.4 — 其他任务接口（2026-05-04）
 
