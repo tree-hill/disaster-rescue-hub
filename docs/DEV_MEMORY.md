@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：P3 机器人模块  
-当前任务：P3.6 故障与召回（POST /robots/{id}/recall + intervention 写入 + robot.recall_initiated WS 事件 + Agent 收召回信号转 RETURNING）  
-最近完成：P3.5 WebSocket 推送（python-socketio AsyncServer + connect/subscribe/disconnect handler + 拉模型 1Hz batch broadcaster + ASGI 集成 + 房间角色守卫 commander/admin/observer，20/20 自检全绿）（2026-05-03）  
-下一任务：P3.6 实装 recall 接口（BUSINESS_RULES §4）+ Agent 召回响应 + 故障 fault_occurred 事件；BUILD_ORDER P3 验收第 4/5 条收口  
+当前阶段：**P3 机器人模块完整收口**，进入 P4 任务模块  
+当前任务：P4.1 任务 Schemas + Repository（BUILD_ORDER §P4.1）  
+最近完成：P3.6 故障与召回（POST /robots/{id}/recall 7 步流程 + intervention 同事务 + RobotAgent 召回响应/到达基地/低电量自动 FAULT + 三个 WS 事件 recall_initiated/recall_completed/fault_occurred；新增 409_ROBOT_NOT_RECALLABLE_001 + 503_AGENT_NOT_RUNNING_001 错误码；26/26 自检全绿）（2026-05-03）  
+下一任务：P4.1 `schemas/task.py`（TaskCreate/Read/Update/TaskRequiredCapabilities，对照 DATA_CONTRACTS §1.8 + §4.5/§4.6）+ `repositories/task.py`（save/find_by_id/find_by_status/find_pending）  
 
 ---
 
@@ -91,6 +91,94 @@
 ---
 
 ## 已完成任务
+
+### P3.6 — 故障与召回：POST /recall + intervention + RobotAgent 召回响应 + recall_initiated/recall_completed/fault_occurred WS 事件（2026-05-03）
+
+- 任务：P3.6 故障与召回（BUILD_ORDER §P3.6）
+- 执行工具：Claude Code
+- 修改类型：feat + 小幅 docs（新增 2 个错误码）
+- 涉及文件：
+  - backend/app/schemas/intervention.py（新增）
+  - backend/app/repositories/intervention.py（新增）
+  - backend/app/repositories/robot_fault.py（新增）
+  - backend/app/ws/events.py（新增）
+  - backend/app/services/recall_service.py（新增）
+  - backend/app/agents/robot_agent.py（修改：request_recall + RETURNING 移动 + arrived 检测 + _complete_recall + _enter_fault + _emit_event 钩子）
+  - backend/app/agents/manager.py（修改：request_recall 转发）
+  - backend/app/api/v1/robots.py（修改：POST /{id}/recall）
+  - backend/app/core/constants.py（修改：BASE_LAT/LNG/ALT + RETURNING_ARRIVAL_THRESHOLD_M + RECALL_REASON_MIN/MAX_LEN）
+  - docs/BUSINESS_RULES.md（修改：§6.2 加 409_ROBOT_NOT_RECALLABLE_001 + 503_AGENT_NOT_RUNNING_001）
+- 新增内容：
+  - `app/ws/events.py`：模块级 `push_event(name, payload, room='commander')` 自动注入 `event_id`(uuid4) + `timestamp`(ISO 8601 UTC)，对照 INV-F「每个 WS 事件必须有 event_id 和 timestamp」；统一 fault/recall/state_changed 等事件型推送出口（与 broadcaster 高频拉模型分工：broadcaster 推 robot.position_updated，push_event 推所有事件型）
+  - `schemas/intervention.py`：
+    * `RecallRequest{reason: str (max_length=500)}` —— Pydantic 仅校验 max_length；min_length 业务校验由 service 抛**特化错误码** `422_INTERVENTION_REASON_INVALID_001` 而非通用 `422_VALIDATION_FAILED_001`
+    * `RecallResponse{intervention_id: UUID, recall_eta_sec: int}`
+  - `repositories/intervention.py` & `repositories/robot_fault.py`：add+flush 模式（与 P2/P3.x 仓储统一），事务由 service commit
+  - `services/recall_service.py` `RecallService(session)`：
+    * 7 步流程（严格按 BUSINESS_RULES §4.2）：reason 校验 → 404 → 503/409 → before_state 快照（DATA_CONTRACTS §4.8 召回场景字段）→ recall_eta_sec（haversine 近似 + capability.max_speed_mps，下限 1）→ agent.request_recall（内存转 RETURNING + target=BASE）→ 写 intervention 同事务 commit → 事务外 emit recall_initiated
+    * 错误码矩阵：FAULT → `409_ROBOT_ALREADY_FAULT_001`；其他不可召回（IDLE）→ `409_ROBOT_NOT_RECALLABLE_001` + details.message=当前 fsm；agent 不在线 → `503_AGENT_NOT_RUNNING_001`
+    * intervention.id 灌回 `agent._recall_intervention_id`，供后续 recall_completed payload 引用同一 intervention_id（链路追溯）
+  - `agents/robot_agent.py` 重大扩展：
+    * 新增召回上下文字段：`_recall_user_id` / `_recall_reason` / `_recall_intervention_id` / `_recall_started_at`
+    * 新增 `_event_emit_override: EventEmitter | None`（异步事件推送钩子，默认 push_event；测试可劫持）
+    * `request_recall(*, user_id, reason, intervention_id=None) -> bool`：仅 EXECUTING/BIDDING/RETURNING 可召回；EXECUTING/BIDDING → transit RETURNING + target=BASE；RETURNING → 幂等保留 target；其他状态返回 False
+    * `_arrived_at_base()`：RETURNING 阶段距基地 < RETURNING_ARRIVAL_THRESHOLD_M(=50m) 即视为到达
+    * `_complete_recall()`：transit IDLE + clear current_task_id/target/recall ctx + emit `robot.recall_completed`（含 eta_actual_sec=回到基地耗时）
+    * `_enter_fault(fault_type)`：transit FAULT + 写 robot_faults 表（独立 session，severity 按类型映射 low_battery=critical/其他=warn，message 中文短句）+ emit `robot.fault_occurred`（含 fault_id；写库失败仍推送 fault_id=None）
+    * `_emit_event(name, payload)`：异步事件推送出口，try/except 包裹防止 emit 失败拉宕主循环
+    * `_tick` 重写：EXECUTING 与 RETURNING 都执行 move + drain；2.5 步加入「RETURNING 抵达基地 → _complete_recall」；故障检测命中改走 `_enter_fault`（原来仅 transit FAULT）
+    * DEFAULT_INITIAL_POSITION 改用 BASE_LAT/LNG/ALT，与 seed.py 演练区中心对齐
+  - `agents/manager.py` `AgentManager.request_recall(robot_id, *, user_id, reason, intervention_id)`：不在线/找不到/agent 拒绝 → False（service 层翻译为 503/409）
+  - `api/v1/robots.py` `POST /{id}/recall`：robot:recall 守卫，复用 RecallService
+  - `constants.py`：BASE_LAT=30.225 / BASE_LNG=120.525 / BASE_ALTITUDE_M=50.0 / RETURNING_ARRIVAL_THRESHOLD_M=50.0 / RECALL_REASON_MIN_LEN=5 / RECALL_REASON_MAX_LEN=500
+  - BUSINESS_RULES.md §6.2 新增两个错误码（小幅契约扩展，已同步更新表格）：
+    * `409_ROBOT_NOT_RECALLABLE_001` — 当前 FSM 状态不可召回（仅 EXECUTING/BIDDING/RETURNING 可召回；details.message 含实际状态）
+    * `503_AGENT_NOT_RUNNING_001` — AgentManager 未启动或机器人 Agent 协程不存在（mock_agents_enabled=False 场景）
+- 设计决策：
+  - **特化错误码优先于通用 422**：reason min_length 校验放 service 而非 Pydantic，让 422_INTERVENTION_REASON_INVALID_001 优先于 422_VALIDATION_FAILED_001（BUSINESS_RULES §6.5 字面）
+  - **拉模型 vs 推模型并存**：高频 robot.position_updated 由 broadcaster 单协程拉 AgentManager 快照（每秒 1 条 batch）；事件型 fault_occurred / recall_initiated / recall_completed 由触发方主动 push_event。两条路径互不干扰，broadcaster 不动 RobotAgent emit 钩子
+  - **agent 内存态在 commit 前修改**：极小窗口风险（mock 环境 DB 稳定可接受）；P5 接入真实 dispatch 时再补 try/except 回滚 agent 状态。INV-G 同事务约束在 intervention 与「未来的 task assignment 释放」两表之间，本任务只有 intervention 单表写
+  - **request_recall 同步方法**：仅做内存状态变更（transit + target=BASE），不做 DB/WS。让 service 层 1 个 await intervention.save 后再 emit，串行清晰
+  - **EXECUTING + RETURNING 共享移动逻辑**：两种状态都朝 target_position 移动 1m·tick + 电量 -0.5%/tick；区别仅在 target 来源（EXECUTING 由 dispatch_service 设，RETURNING 由 request_recall 强制设为 BASE）
+  - **RETURNING 抵达基地阈值 50m**：BUSINESS_RULES §2.2.3 字面规定；用与 Agent 移动一致的 `1°=METERS_PER_DEGREE` 近似（毕设演示足够）
+  - **fault_occurred message 中文短句**：「电量降至 4.0%，无法继续执行任务」直接给前端展示，与 WS_EVENTS §3 fault_occurred.message 一致
+  - **写 robot_faults 失败仍 transit + emit**：状态正确性优先于审计完整性，失败仅 logger.exception
+  - **intervention.recorded（admin 房间审计事件）推迟到 P5**：P3.6 只发 robot.recall_initiated 到 commander 房间；HITL 集中审计在 P5（dispatch 模块上线后多种 intervention 类型一起处理）
+  - **任务侧解绑（current_task_id=None）留 P4**：当前 after_state.current_task_id 保留 before_state 的值，等 P4 task_status_machine 上线后联动「召回 → 任务回 PENDING / 释放 assignment」
+  - **新错误码同步 BUSINESS_RULES.md**：而非"先用未文档化的 code"，遵守 CONVENTIONS §14.1 文档维护表格
+- 测试验证（临时 backend/_p36_check.py，**in-process uvicorn 版**——直接读写 AgentManager 单例；26/26 全绿，验证后已删除不入库）：
+  - **关键架构选择**：测试需要直接操作 agent 内存态（设置 EXECUTING / 注入 battery=4），而 AgentManager 是 per-process 单例。改用 `uvicorn.Config + Server.serve()` 在测试进程内跑后端，agent 单例与测试代码共享；启动入口 `os.environ.setdefault('MOCK_AGENTS_ENABLED','true')` 必须在 import app.* 之前
+  - [setup] AgentManager 启动后 25 个 agent；observer001 用户即时插入 finally 清理；commander WS connect + subscribe commander
+  - [A1] 无 token POST /recall → 401_AUTH_TOKEN_INVALID_001
+  - [A2] observer（无 robot:recall）→ 403_AUTH_PERMISSION_DENIED_001
+  - [A3] reason="abcd"（4 字符）→ 422_INTERVENTION_REASON_INVALID_001 + details.message="strip 后长度 4"
+  - [A4] reason="         "（纯空白 9 字符）→ 同上
+  - [A5] reason="x"*600 → Pydantic max_length → 422_VALIDATION_FAILED_001
+  - [A6] 不存在 UUID → 404_ROBOT_NOT_FOUND_001 + details.field=robot_id
+  - [A7] UAV-003 IDLE → 409_ROBOT_NOT_RECALLABLE_001 + details.message=IDLE
+  - [B] UAV-001 happy path（at base + transit IDLE→BIDDING→EXECUTING）：
+    * 200 + intervention_id (UUID) + recall_eta_sec=1
+    * WS 收 robot.recall_initiated（含 robot_id/code/initiated_by_user_id/reason/intervention_id + event_id/timestamp）
+    * DB human_interventions 写入：type=recall, target_robot_id=UAV-001, before_state.robot_state=EXECUTING, after_state.robot_state=RETURNING
+    * agent.fsm_state ∈ {RETURNING, IDLE}（视到达速度而定）
+    * 4 秒内收 robot.recall_completed（含 eta_actual_sec >= 0）
+    * agent 最终回到 IDLE
+  - [C] UAV-002 fault_occurred（reset → 直接 battery=4 → 等下一 tick）：
+    * WS 收 robot.fault_occurred（fault_type=low_battery, severity=critical, fault_id 为 UUID, 含 event_id+timestamp）
+    * DB robot_faults 写入：type=low_battery, severity=critical, message 含「电量降至」
+    * agent.fsm_state == FAULT
+  - [D] UAV-002 已 FAULT → POST /recall → 409_ROBOT_ALREADY_FAULT_001 + details.message=FAULT
+  - [teardown] 删除测试 intervention（reason LIKE '__test_p36__%'）+ 删除测试 robot_faults + reset agents 回 IDLE/battery=100/position=base + 删除 observer001
+- 环境处理：
+  - 沿用 backend/.venv，无新增依赖
+- Git 提交：
+  - commit message：feat: P3.6 robot recall + fault flow with intervention and ws events
+  - push 状态：待执行
+- 下一步建议：
+  - P4.1：实装 task 模块基础设施
+    1. `schemas/task.py`：TaskCreate / TaskRead / TaskUpdate / TaskRequiredCapabilities（对照 DATA_CONTRACTS §1.8 + §4.5 target_area + §4.6 required_capabilities）
+    2. `repositories/task.py`：save / find_by_id / find_by_status / find_pending
+    3. P3.6 留下的 P4 联动点：召回成功后 after_state.current_task_id 暂保留原值，P4 task_status_machine 上线后接入「recall → 该任务若无其他 active assignment 则回 PENDING」逻辑（BUSINESS_RULES §4.4）
 
 ### P3.5 — WebSocket 推送：python-socketio + connect/subscribe/disconnect + 1Hz batch broadcaster（2026-05-03）
 

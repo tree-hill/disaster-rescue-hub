@@ -24,6 +24,48 @@
 
 ## 提交记录
 
+### 2026-05-03 — P3.6
+
+- 任务：P3.6 故障与召回（recall API + intervention + RobotAgent recall 响应 + recall_initiated/recall_completed/fault_occurred WS 事件）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P3.6 robot recall + fault flow with intervention and ws events
+- Commit hash：（push 后回填）
+- 是否 push：待执行
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/schemas/intervention.py（新增）：RecallRequest（max_length=500，min_length 让 service 抛特化错误码）+ RecallResponse{intervention_id, recall_eta_sec}
+  - backend/app/repositories/intervention.py & robot_fault.py（新增）：add+flush 模式
+  - backend/app/ws/events.py（新增）：`push_event(name, payload, room='commander')` 自动注入 event_id+timestamp（INV-F）
+  - backend/app/services/recall_service.py（新增）：7 步流程（reason 校验 → 404 → 503/409 → before_state → eta_sec → request_recall → intervention 同事务 → emit recall_initiated）
+  - backend/app/agents/robot_agent.py（修改）：request_recall + RETURNING 移动 + _arrived_at_base + _complete_recall（emit recall_completed 含 eta_actual_sec）+ _enter_fault（transit FAULT + 写 robot_faults + emit fault_occurred）+ _emit_event 钩子；DEFAULT_INITIAL_POSITION 改用 BASE_LAT/LNG/ALT
+  - backend/app/agents/manager.py（修改）：request_recall 转发
+  - backend/app/api/v1/robots.py（修改）：POST /{id}/recall（robot:recall 守卫）
+  - backend/app/core/constants.py（修改）：BASE_LAT/LNG/ALT + RETURNING_ARRIVAL_THRESHOLD_M=50 + RECALL_REASON_MIN/MAX_LEN
+  - docs/BUSINESS_RULES.md（修改）：§6.2 加 `409_ROBOT_NOT_RECALLABLE_001` + `503_AGENT_NOT_RUNNING_001`（小幅契约扩展）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 设计决策：
+  - 特化错误码优先于通用 422：reason min_length 校验放 service 抛 422_INTERVENTION_REASON_INVALID_001（BUSINESS_RULES §6.5 字面），而非 Pydantic 422_VALIDATION_FAILED_001
+  - 拉模型 vs 推模型并存：高频 robot.position_updated 走 broadcaster 拉模型；事件型 fault/recall 走 push_event 主动推。两者互不干扰
+  - request_recall 同步方法：仅做内存状态变更（transit RETURNING + target=BASE）；DB/WS 由 service 层串行
+  - EXECUTING 与 RETURNING 共享移动逻辑（move + drain）；区别仅在 target 来源
+  - RETURNING 抵达基地阈值 50m（BUSINESS_RULES §2.2.3 字面）；用与 Agent 移动一致的 1°=METERS_PER_DEGREE 近似
+  - intervention.recorded（admin 房间审计事件）推迟到 P5；P3.6 只发 commander 房间
+  - 任务侧解绑（current_task_id=None）留 P4：当前 after_state.current_task_id 保留 before_state 值
+  - 写 robot_faults 失败仍 transit + emit：状态正确性优先于审计完整性
+- 自检（26/26 全绿，临时 backend/_p36_check.py 验证后已删除；**in-process uvicorn**：因为测试需要直接读写 AgentManager 单例，把 uvicorn.Config + Server.serve() 跑在测试进程内）：
+  - [setup] AgentManager 25 agents + observer001 用户即时插入 + commander WS subscribe
+  - [A1-A7] 权限/输入边界：401 / 403（observer 无 robot:recall）/ 422_INTERVENTION_REASON_INVALID_001（4 字符 + 纯空白）/ 422_VALIDATION_FAILED_001（>500）/ 404 / 409_ROBOT_NOT_RECALLABLE_001(IDLE)
+  - [B] UAV-001 happy path：200 + intervention_id + eta_sec=1 + WS recall_initiated（含全字段+event_id+timestamp）+ DB human_interventions 写入正确（before/after_state schema 对照 §4.8）+ agent transit RETURNING + 到达基地后收 recall_completed（含 eta_actual_sec）+ 最终 IDLE
+  - [C] UAV-002 fault_occurred（直接 battery=4 → 下一 tick）：WS fault_occurred（low_battery/critical/fault_id UUID）+ DB robot_faults 写入 + agent FAULT
+  - [D] FAULT 状态再召回 → 409_ROBOT_ALREADY_FAULT_001 + details.message=FAULT
+  - [teardown] 清测试 intervention（reason LIKE '__test_p36__%%'）+ robot_faults + observer001 + reset 25 agents
+- P3 阶段完整收口：BUILD_ORDER §P3 验收 5 条全过（CRUD + Mock Agent + 1Hz 心跳 + WS 推送 + recall + fault）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-03 — P3.5
 
 - 任务：P3.5 WebSocket 推送（python-socketio + connect/subscribe/disconnect + 1Hz batch broadcaster）

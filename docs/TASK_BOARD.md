@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P3 机器人模块  
-当前任务：P3.6 故障与召回  
+当前阶段：P3 机器人模块（**全部完成**）  
+当前任务：P4.1 任务 Schemas + Repository（下一阶段起点）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P3.5 完成（python-socketio AsyncServer + connect/subscribe/disconnect handler + 1Hz batch broadcaster，20/20 自检全绿，commander 5s 收 5 条 batch × 25 updates）。下一步进入 P3.6 实装 POST /robots/{id}/recall + intervention 写入 + robot.recall_initiated WS 事件。  
+备注：P3.6 完成（POST /robots/{id}/recall + RecallService 7 步流程 + intervention 同事务 + robot.recall_initiated/recall_completed/fault_occurred 三个 WS 事件 + RobotAgent 召回响应 / 故障入口写库；26/26 自检全绿，覆盖权限/输入/404/IDLE/FAULT/happy path/到达基地/低电量自动 FAULT 8 大场景）。**P3 阶段完整收口**，进入 P4 任务模块。  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P3.6 故障与召回：`POST /robots/{id}/recall`（BUSINESS_RULES §4）+ 写 intervention + 推 `robot.recall_initiated` WS 事件 + Agent 收到召回信号 → 状态转 RETURNING；BUILD_ORDER 整体 P3 验收第 4/5 条（recall API + 故障转 FAULT 收 fault_occurred）
+- [ ] P4.1 任务 Schemas + Repository（BUILD_ORDER §P4.1）：`schemas/task.py`（TaskCreate/Read/Update/TaskRequiredCapabilities） + `repositories/task.py`（save/find_by_id/find_by_status/find_pending）
 
 ### In Progress
 
@@ -75,6 +75,7 @@
 - [x] P3.3 RobotAgent 协程基础：`agents/robot_agent.py`（ROBOT_FSM_TRANSITIONS 字典 + transit 守卫 + 1Hz `run()` 主循环用 stop_event 替代 sleep + battery≤5 故障检测自动 transit FAULT）+ `agents/manager.py`（单例 AgentManager + start_all/stop_all 优雅退出 + 超时强制 cancel）+ `core/constants.py` 新增 FAULT_BATTERY_THRESHOLD / HEARTBEAT_TIMEOUT_SEC + `config.py` mock_agents_enabled 默认改 False + `main.py` FastAPI lifespan 集成；14 项断言全绿（含 lifespan 双分支直接测 async context manager）（2026-05-03，Claude Code）
 - [x] P3.4 Mock 行为实现：`agents/robot_agent.py` 加 `target_position` + `set_target_position` + `_move_toward_target`（近似 1°=111320m，5 tick 误差 0.00%）+ `_drain_battery` + `_persist_state`（每 tick 独立 session 写一行 robot_states）+ `_emit_state_changed` WS 推送钩子（P3.4 仅 logger，P3.5 接 sio.emit）+ `_check_faults` 加概率注入分支；`constants.py` 新增 EXECUTING_BATTERY_DRAIN_PCT / MOVE_STEP_METERS / METERS_PER_DEGREE；`config.py` 新增 mock_fault_inject_probability；行为顺序：移动/电量 → 故障检测 → 写 DB → emit；10/10 自检全绿（1.05s × 25 Agent = 26 行符合 1Hz）（2026-05-03，Claude Code）
 - [x] P3.5 WebSocket 推送：`app/ws/server.py`（python-socketio AsyncServer ASGI 模式 + socketio_path='ws'）+ `app/ws/handlers.py`（connect 走 query/auth dict 取 token + emit auth_error 后 disconnect 而非 raise / subscribe 按 commander/admin/observer 角色守卫房间 / unsubscribe / disconnect）+ `app/ws/broadcaster.py`（拉模型单协程 1Hz 读 AgentManager 快照 + 房间无人跳过 emit + 单 tick 异常仅 log）+ `main.py` 用 `socketio.ASGIApp(sio, other_asgi_app=app)` 导出 `asgi_app` + lifespan 同步启停 broadcaster；pyproject.toml 加 aiohttp dev 依赖（仅 AsyncClient 测试用）；20/20 自检全绿（commander 5s 收 5 条 batch × 25 updates，observer 拒 commander 房间，admin 同时获得 commander+admin）（2026-05-03，Claude Code）
+- [x] P3.6 故障与召回：`schemas/intervention.py`（RecallRequest/Response，Pydantic max_length=500，min_length 业务校验由 service 抛特化错误码）+ `repositories/intervention.py` & `repositories/robot_fault.py`（add+flush）+ `ws/events.py`（push_event 自动注入 event_id+timestamp，INV-F）+ `services/recall_service.py`（7 步流程：reason 校验 → 404 → 503/409 → before_state → eta_sec → request_recall → intervention 同事务 → emit recall_initiated）+ `agents/robot_agent.py` 加 request_recall / `_arrived_at_base` / `_complete_recall`（emit recall_completed + transit IDLE）/ `_enter_fault`（transit FAULT + 写 robot_faults + emit fault_occurred）+ _tick 整合 RETURNING 移动 + 到达检测；`agents/manager.py` 加 request_recall 转发；`api/v1/robots.py` 加 POST /{id}/recall（robot:recall 守卫）；BUSINESS_RULES.md §6.2 新增 `409_ROBOT_NOT_RECALLABLE_001` + `503_AGENT_NOT_RUNNING_001`；26/26 自检全绿（in-process uvicorn）：A1-A7 权限/边界/404/IDLE 全过 + B 召回 happy path（intervention 持久化 + WS 双事件 + 到达基地 IDLE）+ C 低电量自动 FAULT（写 robot_faults + emit fault_occurred）+ D FAULT 再召回 → 409（2026-05-03，Claude Code）
 
 ---
 

@@ -669,6 +669,8 @@ async def _handle_high_confidence_survivor(detection, position, robot_id):
 | `409_ROBOT_INELIGIBLE_001` | 409 | 机器人不符合任务要求 |
 | `409_ROBOT_HAS_ACTIVE_TASK_001` | 409 | 机器人有进行中任务,不能注销 |
 | `409_ROBOT_ALREADY_FAULT_001` | 409 | 机器人已是 FAULT,不能召回 |
+| `409_ROBOT_NOT_RECALLABLE_001` | 409 | 当前 FSM 状态不可召回（仅 EXECUTING/BIDDING/RETURNING 可召回；details 含实际状态） |
+| `503_AGENT_NOT_RUNNING_001` | 503 | AgentManager 未启动或机器人 Agent 协程不存在（mock_agents_enabled=False 场景） |
 
 ### 6.3 任务类 (TASK)
 | 错误码 | HTTP | 含义 |

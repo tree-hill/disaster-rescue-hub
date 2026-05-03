@@ -29,3 +29,17 @@ MOVE_STEP_METERS = 1.0
 # Mock 阶段用统一 111320 简化（误差约 15%，毕设演示可接受）；
 # P5 调度的距离计算用真实 haversine
 METERS_PER_DEGREE = 111320.0
+
+# === 召回与基地 (P3.6) ===
+# 演练区中心，与 scripts/seed.py CENTER_LAT/LNG 对齐；所有 Agent 启动初始位置
+# 与 RETURNING 阶段的目标位置都是基地。
+BASE_LAT = 30.225
+BASE_LNG = 120.525
+BASE_ALTITUDE_M = 50.0
+# BUSINESS_RULES §2.2.3：RETURNING → IDLE 触发条件「距基地 < 50m」
+RETURNING_ARRIVAL_THRESHOLD_M = 50.0
+
+# === HITL 干预 (P3.6) ===
+# BUSINESS_RULES §4.3.1：reason 长度 5–500 字符
+RECALL_REASON_MIN_LEN = 5
+RECALL_REASON_MAX_LEN = 500

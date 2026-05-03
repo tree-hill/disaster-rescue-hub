@@ -57,6 +57,32 @@ class AgentManager:
     def started(self) -> bool:
         return self._started
 
+    # ---------- HITL 入口（P3.6） ----------
+    def request_recall(
+        self,
+        robot_id: UUID,
+        *,
+        user_id: UUID,
+        reason: str,
+        intervention_id: UUID | None = None,
+    ) -> bool:
+        """转发到对应 RobotAgent 的 request_recall。
+
+        - manager 未启动 → 返回 False（service 层翻译为 503_AGENT_NOT_RUNNING_001）
+        - 找不到该 robot_id 的 Agent → 返回 False（同上）
+        - Agent FSM 不在 {EXECUTING, BIDDING, RETURNING} → 返回 False
+          （service 层根据当前状态分别翻译为 409_ROBOT_ALREADY_FAULT_001 或
+          409_ROBOT_NOT_RECALLABLE_001）
+        """
+        if not self._started:
+            return False
+        agent = self._agents.get(robot_id)
+        if agent is None:
+            return False
+        return agent.request_recall(
+            user_id=user_id, reason=reason, intervention_id=intervention_id
+        )
+
     # ---------- 生命周期 ----------
     async def start_all(self) -> None:
         """加载所有 is_active=TRUE 的机器人，为每台创建 RobotAgent 协程。
