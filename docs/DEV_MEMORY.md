@@ -165,7 +165,8 @@
   - 测试用 socketio.AsyncClient `transports=['websocket']` 强制跳过 polling，避免 polling fallback
 - Git 提交：
   - commit message：feat: P3.5 websocket server with batched robot.position_updated
-  - push 状态：待执行
+  - commit hash：ab9d0f0
+  - push 状态：已 push 至 origin/main
 - 下一步建议：
   - P3.6 故障与召回：
     1. `POST /robots/{id}/recall`（BUSINESS_RULES §4）：校验 fsm_state ∈ {EXECUTING, BIDDING, RETURNING} → 写 human_interventions（type=recall, target_robot_id, reason）→ 推 `robot.recall_initiated`（WS_EVENTS §3，commander+admin 房间）

@@ -30,8 +30,8 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P3.5 websocket server with batched robot.position_updated
-- Commit hash：（push 后回填）
-- 是否 push：待执行
+- Commit hash：ab9d0f0
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - backend/app/ws/__init__.py（新增）
