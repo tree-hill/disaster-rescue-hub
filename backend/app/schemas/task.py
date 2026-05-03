@@ -25,16 +25,19 @@ class TargetArea(BaseModel):
     - polygon：使用 vertices[]
     - circle：使用 center + radius_m
 
-    area_km2 / center_point 为预计算字段，方便排序与拍卖；具体几何字段一致性校验
-    （type=rectangle 必有 bounds 等）放在 service 层抛 422_TASK_INVALID_AREA_001。
+    area_km2 / center_point 为预计算字段，方便排序与拍卖；几何字段一致性校验
+    （type=rectangle 必有 bounds 等）+ area_km2 / radius_m 必须 > 0 的业务校验放
+    在 service 层，统一抛特化错误码 422_TASK_INVALID_AREA_001（BUSINESS_RULES §6.3
+    字面）；schema 层不再做 gt=0，避免 Pydantic 422_VALIDATION_FAILED_001 抢先返回
+    通用错误码。
     """
 
     type: Literal["rectangle", "polygon", "circle"]
     bounds: dict | None = None
     vertices: list[Position] | None = None
     center: Position | None = None
-    radius_m: float | None = Field(None, gt=0)
-    area_km2: float = Field(..., gt=0)
+    radius_m: float | None = None
+    area_km2: float
     center_point: Position
 
 

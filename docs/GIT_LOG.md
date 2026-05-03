@@ -24,6 +24,27 @@
 
 ## 提交记录
 
+### 2026-05-04 — P4.3
+
+- 任务：P4.3 任务创建接口
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P4.3 POST /tasks with area validation, year-scoped code allocation, 500m grid decompose
+- Commit hash：(待 push 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/services/task_service.py（新增）：TaskService.create + _validate_area + _decompose_to_tiles + _allocate_root_code（pg_advisory_xact_lock 按年串行）+ _child_code（T-YYYY-NNN-CC）+ _emit_created（commit 后 WS push）+ IntegrityError 重试 3 次
+  - backend/app/api/v1/tasks.py（新增）：POST /tasks 201 + TaskRead，权限 task:create
+  - backend/app/api/router.py（修改）：include v1_tasks.router
+  - backend/app/core/constants.py（修改）：新增 TASK_GRID_DECOMPOSE_THRESHOLD_KM2 / TASK_GRID_TILE_METERS / TASK_CODE_SEQ_WIDTH / TASK_CHILD_CODE_SEQ_WIDTH
+  - backend/app/schemas/task.py（修改）：移除 area_km2 / radius_m 的 gt=0（迁到 service 抛特化 422_TASK_INVALID_AREA_001）
+- 自检：27/27 全绿（纯函数 11 + advisory lock 串行 1 + HTTP 15），临时脚本验证后删除，DB 清理 0 残留
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P4.2
 
 - 任务：P4.2 任务状态机服务

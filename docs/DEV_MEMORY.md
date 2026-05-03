@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P4 任务模块  
-当前任务：P4.3 任务创建接口（BUILD_ORDER §P4.3）  
-最近完成：P4.2 任务状态机服务（`services/task_status_machine.py`：TASK_TRANSITIONS 严格对齐 BUSINESS_RULES §2.1.3；transit 在 ASSIGNED→EXECUTING 设 started_at、EXECUTING→{COMPLETED,FAILED,CANCELLED} 设 completed_at、EXECUTING→EXECUTING 改派保留 started_at；非法/终态/跨级跳转抛 409_TASK_STATUS_CONFLICT_001；释放 assignment/WS push/intervention 由调用方负责；27/27 自检全绿）（2026-05-04）  
-下一任务：P4.3 POST /tasks（area_km2>0 422、自动 code T-YYYY-NNN、area_km2>1 网格 500m×500m 分解、TaskCreatedEvent 发布、广播 task.created）  
+当前任务：P4.4 其他任务接口（BUILD_ORDER §P4.4）  
+最近完成：P4.3 任务创建接口（POST /api/v1/tasks，权限 task:create；area service 层校验抛 422_TASK_INVALID_AREA_001；advisory lock 按年串行分配 T-YYYY-NNN；area_km2 > 1 触发 500m × 500m 网格分解，rectangle/polygon/circle 一律 bbox 平铺，子任务 code T-YYYY-NNN-CC，parent_id 关联；父+子同事务 commit；commit 后 push `task.created` WS 事件到 commander 房间；事件总线接入留 P4.5；27/27 自检全绿）（2026-05-04）  
+下一任务：P4.4 GET /tasks 分页 + GET /tasks/{id} 含 assignments + PUT /tasks/{id} 仅非终态 + POST /tasks/{id}/cancel + GET /tasks/{id}/assignments  
 
 ---
 
@@ -91,6 +91,34 @@
 ---
 
 ## 已完成任务
+
+### P4.3 — 任务创建接口（2026-05-04）
+
+- 任务：P4.3（BUILD_ORDER §P4.3）
+- 执行工具：Claude Code
+- 修改类型：feat（含 schema 校验层迁移）
+- 涉及文件：
+  - `backend/app/services/task_service.py`（新增）
+  - `backend/app/api/v1/tasks.py`（新增）
+  - `backend/app/api/router.py`（修改：include task router）
+  - `backend/app/core/constants.py`（修改：新增 4 个任务常量）
+  - `backend/app/schemas/task.py`（修改：移除 area_km2/radius_m 的 gt=0，迁到 service 层）
+- 关键设计：
+  - **area 校验分层**：schema 层不再做 gt=0；service 层 `_validate_area` 抛特化 `422_TASK_INVALID_AREA_001`，与 recall_service.reason min_len 抛 `422_INTERVENTION_REASON_INVALID_001` 同模式（特化错误码优先于 Pydantic 通用 422_VALIDATION_FAILED_001，对齐 BUSINESS_RULES §6.3 字面错误码）。校验项：area_km2 > 0 / rectangle 必有 bounds.sw+ne 且 sw 严格在 ne 西南 / polygon ≥ 3 顶点 / circle 必有 center + radius_m > 0。
+  - **任务 code 生成**：`pg_advisory_xact_lock(0x7A5C0001, year)` 串行化同年并发分配；`MAX(SUBSTRING(code FROM 'T-YYYY-(\d+)$') AS INTEGER) + 1`；UNIQUE 兜底重试 3 次。锁随事务释放，临界区只覆盖 SELECT MAX → INSERT。子任务 code 形式 `T-YYYY-NNN-CC`（CC 从 01 起，宽度 2，溢出按实际位数输出，不截断）。MAX 查询用正则 `^T-YYYY-\d+$` 排除子任务，避免 NNN-CC 干扰。
+  - **网格分解**：rectangle / polygon / circle 一律先求经纬度 bounding box（polygon 用 vertices min/max；circle 用 center ± radius/METERS_PER_DEGREE，lng 按 cos(lat) 修正），再按 500m × 500m 平铺；最后一行/列按实际尺寸，每个 tile 重新计算 area_km2（≤ 0.30 km²，避免后续递归分解）。仅当 area_km2 > 1.0 且分解后 ≥ 2 tile 才写子任务，单 tile 退化情形不分解。polygon / circle 的「真实形状裁剪」留给 P5+ 调度算法。
+  - **事务边界**：service 内拿 advisory lock + flush parent + flush children + commit 全部在同一事务；任一步骤失败 rollback 后重试 code 分配。WS 推送在 commit 之后，emit 失败仅 logger.exception，不影响主流程（已写库的任务即使 WS 丢推也会被 broadcaster 后续 1Hz 拉模型补齐）。
+  - **WS 事件**：`task.created`，commander 房间，payload = {event_id, timestamp, task_id, task_code, name, type, priority, target_area, created_by, child_count}（child_count = 0 时表示无分解，> 0 时表示父任务对应的子任务数）。
+  - **事件总线推迟**：BUILD_ORDER §P4.3 写「发布 TaskCreatedEvent 到事件总线」，但事件总线 `app/core/event_bus.py` 是 §P4.5 任务；本任务保持与 P3.6 recall 一致的 push_event 直推模式，P4.5 接入事件总线时仅替换 emit 调用即可。
+- 测试验证：
+  - 27/27 自检全绿（临时脚本 `_check_p43.py`，通过后已删除）：
+    - 纯函数 11 项：validate_area 4 个失败路径（area<=0 / sw>ne / circle 缺 radius / polygon <3 顶点）+ decompose 5 项（5 km² rectangle ≥4 tile / tile <= 0.30 km² / 0.5 km² 仍可几何切分（函数纯函数性）/ polygon 5 km² ≥4 tile / circle 5 km² ≥4 tile）+ child_code 2 项（02 / 123）
+    - advisory lock 串行：连续 3 次分配 → T-9099-001/002/003 严格递增
+    - HTTP 15 项（in-process httpx ASGITransport + monkeypatch sio.emit 捕获 WS 事件）：admin 无 task:create → 403 / commander happy 201 + code 前缀 + status PENDING + created_by / 大区域 201 + DB 中 ≥2 子任务 + parent_id 关联 + 子任务 PENDING + 同 priority / area=0 / 缺 bounds / 缺 radius_m 三种 422 + WS 事件 ≥2 次 + room=commander + payload 含 10 个键
+  - DB 清理：自检后删除所有 T- 开头任务，验证 tasks 表 0 行
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：暂无；P4.5 接事件总线时把 `_emit_created` 内的 push_event 换成 bus.publish
+- 下一步：P4.4 其他任务接口（GET 列表 / 详情 / PUT / cancel / assignments）
 
 ### P4.2 — 任务状态机服务（2026-05-04）
 
