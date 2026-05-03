@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P3 机器人模块完整收口**，进入 P4 任务模块  
-当前任务：P4.1 任务 Schemas + Repository（BUILD_ORDER §P4.1）  
-最近完成：P3.6 故障与召回（POST /robots/{id}/recall 7 步流程 + intervention 同事务 + RobotAgent 召回响应/到达基地/低电量自动 FAULT + 三个 WS 事件 recall_initiated/recall_completed/fault_occurred；新增 409_ROBOT_NOT_RECALLABLE_001 + 503_AGENT_NOT_RUNNING_001 错误码；26/26 自检全绿）（2026-05-03）  
-下一任务：P4.1 `schemas/task.py`（TaskCreate/Read/Update/TaskRequiredCapabilities，对照 DATA_CONTRACTS §1.8 + §4.5/§4.6）+ `repositories/task.py`（save/find_by_id/find_by_status/find_pending）  
+当前阶段：P4 任务模块  
+当前任务：P4.2 任务状态机服务（BUILD_ORDER §P4.2）  
+最近完成：P4.1 任务 Schemas + Repository（`schemas/task.py` TargetArea / TaskRequiredCapabilities / TaskCreate / TaskUpdate / TaskRead 严格对照 DATA_CONTRACTS §1.8/§4.5/§4.6/§5；`repositories/task.py` save/find_by_id/find_by_status/find_pending，事务边界 add+flush；find_pending 按 priority ASC + created_at ASC 对齐 idx_tasks_priority；17/17 自检全绿）（2026-05-03）  
+下一任务：P4.2 `services/task_status_machine.py`（TASK_TRANSITIONS / can_transit / transit 同事务历史日志，409_TASK_STATUS_CONFLICT_001）  
 
 ---
 
@@ -91,6 +91,29 @@
 ---
 
 ## 已完成任务
+
+### P4.1 — 任务 Schemas + Repository（2026-05-03）
+
+- 任务：P4.1（BUILD_ORDER §P4.1）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - `backend/app/schemas/task.py`（新增）
+  - `backend/app/repositories/task.py`（新增）
+- 关键设计：
+  - `TargetArea`：`bounds` 沿用 DATA_CONTRACTS §5 草案 `dict | None`，几何字段一致性（rectangle 必有 bounds、circle 必有 center+radius_m 等）的业务校验留给 P4.3 service 层（422_TASK_INVALID_AREA_001）；`area_km2 > 0` 在 schema 层先拦一道（与 BUILD_ORDER §P4.3 验收一致）。
+  - `TaskRequiredCapabilities`：`min_battery_pct` 默认 20.0；`robot_type=None` 表示不限定，由 P5 调度算法在拍卖时按 sensors/payloads 过滤。
+  - `TaskUpdate` 仅暴露 name / priority / sla_deadline，与 API_SPEC §3 PUT 字段范围对齐；非终态校验放 P4.4 service 层。
+  - 仓库：`find_by_status` 同时接受 `str | Sequence[str]`（IN 查询），空序列短路返回 `[]`，避免下层 `IN ()` 语法错误；`find_pending` 按 priority ASC + created_at ASC 对齐 `idx_tasks_priority` 部分索引（FIFO within priority），是 P5 拍卖触发器主入口。
+  - 事务边界：与 RobotRepository 一致，仅 add+flush，commit/rollback 留给 service / 测试。
+- 测试验证：
+  - 17/17 自检全绿（临时脚本 `_check_p41.py`，通过后已删除）：
+    - schema 7 项：RequiredCapabilities defaults / TargetArea 成功 + area_km2>0 拒绝 / TaskCreate happy + priority∈{1,2,3} 拒绝 / TaskUpdate all-optional + name>200 拒绝
+    - repo 9 项：save flush 回填 id/status/progress / find_by_id 命中 + miss / find_by_status('PENDING') 精准 + IN 查询 + 空序列 [] / find_pending 排序（高优先 → 同优先 FIFO）+ 排除 ASSIGNED / TaskRead.from_attributes
+    - 1 项：rollback 后表内无 T-CHK- 残留
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：暂无
+- 下一步：P4.2 状态机服务（TASK_TRANSITIONS + can_transit + transit 同事务历史日志）
 
 ### P3.6 — 故障与召回：POST /recall + intervention + RobotAgent 召回响应 + recall_initiated/recall_completed/fault_occurred WS 事件（2026-05-03）
 

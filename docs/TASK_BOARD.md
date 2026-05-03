@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P3 机器人模块（**全部完成**）  
-当前任务：P4.1 任务 Schemas + Repository（下一阶段起点）  
+当前阶段：P4 任务模块  
+当前任务：P4.2 任务状态机服务（下一任务）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P3.6 完成（POST /robots/{id}/recall + RecallService 7 步流程 + intervention 同事务 + robot.recall_initiated/recall_completed/fault_occurred 三个 WS 事件 + RobotAgent 召回响应 / 故障入口写库；26/26 自检全绿，覆盖权限/输入/404/IDLE/FAULT/happy path/到达基地/低电量自动 FAULT 8 大场景）。**P3 阶段完整收口**，进入 P4 任务模块。  
+备注：P4.1 完成（`schemas/task.py` 含 TargetArea / TaskRequiredCapabilities / TaskCreate / TaskUpdate / TaskRead，`repositories/task.py` 含 save / find_by_id / find_by_status / find_pending；事务边界 add+flush，find_pending 按 priority ASC + created_at ASC 与 idx_tasks_priority 对齐；17/17 自检全绿，rollback 不污染 DB）。下一步进入 P4.2 状态机。  
 
 ---
 
@@ -44,13 +44,15 @@
 
 ### To Do
 
-- [ ] P4.1 任务 Schemas + Repository（BUILD_ORDER §P4.1）：`schemas/task.py`（TaskCreate/Read/Update/TaskRequiredCapabilities） + `repositories/task.py`（save/find_by_id/find_by_status/find_pending）
+- [ ] P4.2 任务状态机服务（BUILD_ORDER §P4.2）：`services/task_status_machine.py`（TASK_TRANSITIONS / can_transit / transit + 同事务历史日志），不允许的转移抛 `409_TASK_STATUS_CONFLICT_001`
 
 ### In Progress
 
 暂无。
 
 ### Done
+
+- [x] P4.1 任务 Schemas + Repository：`schemas/task.py`（TargetArea + TaskRequiredCapabilities + TaskCreate/Read/Update，对照 DATA_CONTRACTS §1.8/§4.5/§4.6/§5）+ `repositories/task.py`（save/find_by_id/find_by_status[支持 str | Sequence[str]]/find_pending[priority ASC, created_at ASC]，事务边界 add+flush）；17/17 自检全绿（schema 静态校验 7 项 + repo 9 项 + rollback 清理 1 项）（2026-05-03，Claude Code）
 
 - [x] P0.1 创建仓库 + 目录结构（2026-05-02，Claude Code）
 - [x] P0.2 Docker Compose 编排（2026-05-02，Claude Code）

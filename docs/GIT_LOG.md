@@ -24,6 +24,24 @@
 
 ## 提交记录
 
+### 2026-05-03 — P4.1
+
+- 任务：P4.1 任务 Schemas + Repository
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P4.1 task schemas + repository
+- Commit hash：(待 push 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/schemas/task.py（新增）：TargetArea / TaskRequiredCapabilities / TaskBase / TaskCreate / TaskUpdate / TaskRead，对照 DATA_CONTRACTS §1.8/§4.5/§4.6/§5
+  - backend/app/repositories/task.py（新增）：save / find_by_id / find_by_status（接受 str | Sequence[str]，空序列短路）/ find_pending（priority ASC + created_at ASC 对齐 idx_tasks_priority），事务边界 add+flush
+- 自检：17/17 全绿（schema 7 + repo 9 + rollback 1），临时脚本验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-03 — P3.6
 
 - 任务：P3.6 故障与召回（recall API + intervention + RobotAgent recall 响应 + recall_initiated/recall_completed/fault_occurred WS 事件）
