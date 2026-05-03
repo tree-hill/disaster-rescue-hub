@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncIterator
 
+import socketio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,24 +16,33 @@ from app.api.router import api_router
 from app.core.config import settings
 from app.core.exceptions import BusinessError
 from app.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
+from app.ws import handlers as ws_handlers
+from app.ws.broadcaster import get_broadcaster
+from app.ws.server import SOCKETIO_PATH, sio
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """启动时按需拉起 25 个 RobotAgent；关闭时优雅停止。
+    """启动时按需拉起 25 个 RobotAgent + WS 推送器；关闭时优雅停止。
 
     由 settings.mock_agents_enabled 控制（默认 False）：
     - 自检脚本 / pytest 不会自动起后台协程
     - 本地开发想看 Agent 跑：在 backend/.env 显式 MOCK_AGENTS_ENABLED=true
+
+    顺序：
+    - startup：先 AgentManager（确保有数据可读），再 PositionBroadcaster
+    - shutdown：先停 broadcaster（不再读 Agent），再停 AgentManager
     """
     if settings.mock_agents_enabled:
         await get_agent_manager().start_all()
+        await get_broadcaster().start()
     try:
         yield
     finally:
         if settings.mock_agents_enabled:
+            await get_broadcaster().stop()
             await get_agent_manager().stop_all()
 
 
@@ -158,3 +168,10 @@ async def health() -> dict[str, str]:
 
 
 app.include_router(api_router)
+
+
+# === WebSocket（python-socketio + ASGI mount）===
+# 注册 handlers 后，用 socketio.ASGIApp 把 sio 与 FastAPI app 组合为一个 ASGI app。
+# 真实入口请用 `uvicorn app.main:asgi_app`，httpx ASGITransport 测试 REST 仍可直接用 `app`。
+ws_handlers.register_handlers(sio)
+asgi_app = socketio.ASGIApp(sio, other_asgi_app=app, socketio_path=SOCKETIO_PATH)

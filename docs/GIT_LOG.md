@@ -24,6 +24,45 @@
 
 ## 提交记录
 
+### 2026-05-03 — P3.5
+
+- 任务：P3.5 WebSocket 推送（python-socketio + connect/subscribe/disconnect + 1Hz batch broadcaster）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P3.5 websocket server with batched robot.position_updated
+- Commit hash：（push 后回填）
+- 是否 push：待执行
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/ws/__init__.py（新增）
+  - backend/app/ws/server.py（新增）：`socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=['http://localhost:5173'], ping_interval=25, ping_timeout=60)` 单例 + `SOCKETIO_PATH='ws'`
+  - backend/app/ws/handlers.py（新增）：connect 取 query/auth dict 取 token + emit auth_error 后主动 disconnect（**不 raise**，否则 namespace 握手期就拒先前 emit 的 auth_error 包来不及送达）/ subscribe 按 commander/admin/observer 角色矩阵守卫房间 / unsubscribe / disconnect / `register_handlers(sio)` 显式注册
+  - backend/app/ws/broadcaster.py（新增）：`PositionBroadcaster` 拉模型单协程 1Hz 读 `AgentManager.list_agents()` 内存快照 + 拼成 batch payload `updates: [...]` emit `robot.position_updated` 到 `room='commander'` + 房间无人 → 跳过 emit 节流 + 单 tick 异常仅 log 不让循环死亡 + stop 用 stop_event + 超时 cancel 兜底
+  - backend/app/main.py（修改）：`import socketio` + 顶部 import ws 子包；lifespan 顺序 startup AgentManager → broadcaster，shutdown 反序；末尾 `ws_handlers.register_handlers(sio)` + `asgi_app = socketio.ASGIApp(sio, other_asgi_app=app, socketio_path=SOCKETIO_PATH)`；真实运行入口改为 `uvicorn app.main:asgi_app`，httpx ASGITransport 测试 REST 仍用 `app`（不破坏 P0–P3.4 自检）
+  - backend/pyproject.toml（修改）：dev 依赖加 `aiohttp>=3.9,<4.0`（仅 AsyncClient 测试用，**服务端 AsyncServer ASGI 模式不依赖 aiohttp**）
+  - docs/DEV_MEMORY.md / TASK_BOARD.md / GIT_LOG.md：更新记录
+- 设计决策：
+  - 拉模型 vs 推模型：broadcaster 拉 AgentManager 快照，**不动 RobotAgent.\_emit\_state\_changed 钩子**。理由：WS_EVENTS §3 / §12.2 明文「batch 后 = 1 event/s ✓」+ 解耦 + 单点节流好做
+  - 不 raise ConnectionRefusedError：让握手在 namespace 层成功，emit auth_error + sio.disconnect，client 才能拿到 WS_EVENTS §0.2 规范的 `auth_error{reason}` 事件
+  - socketio_path='ws'：真实 URL `ws://host:port/ws/?EIO=4&...` 与 WS_EVENTS §0.2「ws://localhost:8000/ws」对齐
+  - 房间角色矩阵：commander 房 = commander/admin；admin 房 = 仅 admin；observer 仅可连接无推送
+  - broadcaster 仅在 mock_agents_enabled=True 时启动（无 Agent 数据 broadcaster 无意义）
+- 自检（20/20 全绿，临时 backend/_p35_check.py 验证后已删除；socketio.AsyncClient + httpx 直连 uvicorn 跑在 127.0.0.1:8765 + MOCK_AGENTS_ENABLED=true；observer001 用户即时插入 finally 清理）：
+  - [1] 无 token → auth_error{reason:invalid}
+  - [2] 篡改 token → auth_error{reason:invalid}
+  - [3] 过期 token（jose 编一个 1 秒前过期的 access）→ auth_error{reason:token_expired}
+  - [4] commander 合法 → welcome 含 user.username='commander001' / roles 含 'commander' / session_id / event_id
+  - [5] commander 订阅 commander → subscribed{rooms:['commander']}，无 subscribe_error
+  - [6] commander 订阅 admin → subscribe_error{room:admin, reason:permission_denied}，**无** subscribed 补发
+  - [7] observer 订阅 commander → 先收 welcome（可连接），订阅得 subscribe_error{room:commander, reason:permission_denied}
+  - [8] admin 订阅 commander+admin → 1 条 subscribed{rooms:{commander,admin}}，无 error
+  - [9] commander 订阅后 5.2s 收 5 条 robot.position_updated：updates 长度 25 / 字段完整 / position 含 lat/lng / 25 个 robot_code 不重复 / 含 event_id + timestamp
+  - [10] disconnect 客户端干净退出
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-03 — P3.4
 
 - 任务：P3.4 Mock 行为实现（移动 / 电量下降 / 每 tick 写 robot_states / emit 钩子）

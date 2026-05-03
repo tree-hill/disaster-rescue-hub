@@ -8,9 +8,9 @@
 ## 当前阶段
 
 当前阶段：P3 机器人模块  
-当前任务：P3.5 WebSocket 推送  
+当前任务：P3.6 故障与召回  
 任务来源：docs/BUILD_ORDER.md  
-备注：P3.4 完成（移动/电量/写 robot_states/emit 钩子/概率注入故障，1.05s × 25 Agent = 26 行符合 1Hz 验收；10/10 自检全绿），进入 P3.5 实装 python-socketio + 把 emit 钩子接到 sio.emit  
+备注：P3.5 完成（python-socketio AsyncServer + connect/subscribe/disconnect handler + 1Hz batch broadcaster，20/20 自检全绿，commander 5s 收 5 条 batch × 25 updates）。下一步进入 P3.6 实装 POST /robots/{id}/recall + intervention 写入 + robot.recall_initiated WS 事件。  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P3.5 WebSocket 推送：`app/ws/server.py`（python-socketio AsyncServer + ASGI mount）+ `app/ws/handlers.py`（connect/subscribe/disconnect，对照 WS_EVENTS §2）+ 把 RobotAgent `_emit_state_changed` 钩子改写为 `await sio.emit('robot.position_updated', ..., room='commander')`
+- [ ] P3.6 故障与召回：`POST /robots/{id}/recall`（BUSINESS_RULES §4）+ 写 intervention + 推 `robot.recall_initiated` WS 事件 + Agent 收到召回信号 → 状态转 RETURNING；BUILD_ORDER 整体 P3 验收第 4/5 条（recall API + 故障转 FAULT 收 fault_occurred）
 
 ### In Progress
 
@@ -74,6 +74,7 @@
 - [x] P3.2 机器人 REST 接口实现：`schemas/pagination.py`（泛型 Page[T]）+ `schemas/robot.py` 追加 `RobotDetailRead` + `repositories/robot.py` 追加 `find_paginated`（type/group_id/search 过滤 + ILIKE）+ `services/robot_service.py`（404/409 错误工厂 + IntegrityError 翻译 + PATCH 语义 update + active task 守卫的 soft_delete）+ `api/v1/robots.py` 6 路由（GET 列表/详情/states + POST/PUT/DELETE，权限分 robot:read 和 robot:manage，limit le=1000 路由层 422）+ seed.py upsert_role 改幂等并补 commander 的 robot:read，13 项 18 断言 httpx ASGITransport 全绿（2026-05-03，Claude Code）
 - [x] P3.3 RobotAgent 协程基础：`agents/robot_agent.py`（ROBOT_FSM_TRANSITIONS 字典 + transit 守卫 + 1Hz `run()` 主循环用 stop_event 替代 sleep + battery≤5 故障检测自动 transit FAULT）+ `agents/manager.py`（单例 AgentManager + start_all/stop_all 优雅退出 + 超时强制 cancel）+ `core/constants.py` 新增 FAULT_BATTERY_THRESHOLD / HEARTBEAT_TIMEOUT_SEC + `config.py` mock_agents_enabled 默认改 False + `main.py` FastAPI lifespan 集成；14 项断言全绿（含 lifespan 双分支直接测 async context manager）（2026-05-03，Claude Code）
 - [x] P3.4 Mock 行为实现：`agents/robot_agent.py` 加 `target_position` + `set_target_position` + `_move_toward_target`（近似 1°=111320m，5 tick 误差 0.00%）+ `_drain_battery` + `_persist_state`（每 tick 独立 session 写一行 robot_states）+ `_emit_state_changed` WS 推送钩子（P3.4 仅 logger，P3.5 接 sio.emit）+ `_check_faults` 加概率注入分支；`constants.py` 新增 EXECUTING_BATTERY_DRAIN_PCT / MOVE_STEP_METERS / METERS_PER_DEGREE；`config.py` 新增 mock_fault_inject_probability；行为顺序：移动/电量 → 故障检测 → 写 DB → emit；10/10 自检全绿（1.05s × 25 Agent = 26 行符合 1Hz）（2026-05-03，Claude Code）
+- [x] P3.5 WebSocket 推送：`app/ws/server.py`（python-socketio AsyncServer ASGI 模式 + socketio_path='ws'）+ `app/ws/handlers.py`（connect 走 query/auth dict 取 token + emit auth_error 后 disconnect 而非 raise / subscribe 按 commander/admin/observer 角色守卫房间 / unsubscribe / disconnect）+ `app/ws/broadcaster.py`（拉模型单协程 1Hz 读 AgentManager 快照 + 房间无人跳过 emit + 单 tick 异常仅 log）+ `main.py` 用 `socketio.ASGIApp(sio, other_asgi_app=app)` 导出 `asgi_app` + lifespan 同步启停 broadcaster；pyproject.toml 加 aiohttp dev 依赖（仅 AsyncClient 测试用）；20/20 自检全绿（commander 5s 收 5 条 batch × 25 updates，observer 拒 commander 房间，admin 同时获得 commander+admin）（2026-05-03，Claude Code）
 
 ---
 

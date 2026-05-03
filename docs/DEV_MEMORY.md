@@ -10,9 +10,9 @@
 
 项目名称：disaster-rescue-hub  
 当前阶段：P3 机器人模块  
-当前任务：P3.5 WebSocket 推送（python-socketio + connect/subscribe/disconnect + 1Hz 批量 robot.position_updated）  
-最近完成：P3.4 Mock 行为实现（IDLE 不动 / EXECUTING 朝目标 1m·s / 电量 -0.5%/tick / 每 tick 写 robot_states / emit 钩子 / 概率注入故障，10/10 自检全绿，1.05s × 25 Agent = 26 行符合 1Hz 验收）（2026-05-03）  
-下一任务：P3.5 `app/ws/server.py`（python-socketio）+ `app/ws/handlers.py`；把 RobotAgent 的 `_emit_state_changed` 钩子接到 `sio.emit('robot.position_updated', ...)`；实现 commander 房间订阅 + 批量推送  
+当前任务：P3.6 故障与召回（POST /robots/{id}/recall + intervention 写入 + robot.recall_initiated WS 事件 + Agent 收召回信号转 RETURNING）  
+最近完成：P3.5 WebSocket 推送（python-socketio AsyncServer + connect/subscribe/disconnect handler + 拉模型 1Hz batch broadcaster + ASGI 集成 + 房间角色守卫 commander/admin/observer，20/20 自检全绿）（2026-05-03）  
+下一任务：P3.6 实装 recall 接口（BUSINESS_RULES §4）+ Agent 召回响应 + 故障 fault_occurred 事件；BUILD_ORDER P3 验收第 4/5 条收口  
 
 ---
 
@@ -91,6 +91,87 @@
 ---
 
 ## 已完成任务
+
+### P3.5 — WebSocket 推送：python-socketio + connect/subscribe/disconnect + 1Hz batch broadcaster（2026-05-03）
+
+- 任务：P3.5 WebSocket 推送（BUILD_ORDER §P3.5）
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件：
+  - backend/app/ws/__init__.py（新增）
+  - backend/app/ws/server.py（新增）
+  - backend/app/ws/handlers.py（新增）
+  - backend/app/ws/broadcaster.py（新增）
+  - backend/app/main.py（修改：用 socketio.ASGIApp 包 FastAPI 导出 asgi_app + lifespan 启停 broadcaster）
+  - backend/pyproject.toml（修改：dev 依赖加 aiohttp，仅 AsyncClient 测试用）
+- 新增内容：
+  - `app/ws/server.py`：模块级 `sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=['http://localhost:5173'], ping_interval=25, ping_timeout=60)` 单例；`SOCKETIO_PATH = 'ws'`
+  - `app/ws/handlers.py`：
+    * `_extract_token(environ, auth)`：优先 socket.io-client 推荐的 auth dict，回退 query string `?token=`（WS_EVENTS §0.2 字面规范）
+    * `_resolve_user(token)`：复用 `decode_token` + `UserRepository`，过期 → reason='token_expired'，其他失效（签名错 / type≠access / sub 非 UUID / 用户不存在或停用）→ reason='invalid'，与 deps.py 防探测设计对齐
+    * `connect(sid, environ, auth)`：**不 raise ConnectionRefusedError**（会让 namespace 握手期立即拒绝，先前 emit 的 auth_error 包来不及送达），改为「让握手成功 → emit auth_error → 主动 sio.disconnect(sid)」，client 才能正常收到事件（WS_EVENTS §0.2 字面要求）
+    * 成功路径：`save_session` 写入 user_id/username/display_name/roles → emit `welcome`（含 event_id/timestamp/session_id/user/server_time，WS_EVENTS §2 完整 schema）
+    * `subscribe(sid, data)`：按 `ROOM_ROLE_REQUIREMENTS = {'commander': {'commander','admin'}, 'admin': {'admin'}}` 守卫；部分成功也算成功（granted 列表 emit `subscribed`，被拒条目逐条 `subscribe_error`）；observer 角色不在任何房间允许集 → 仅可连接但无推送
+    * `unsubscribe`/`disconnect`：幂等 leave_room / 仅日志
+    * `register_handlers(server)`：显式注册函数（不用 @sio.event 装饰器避免 import side effect，handler 注册时机由 main.py 控制）
+  - `app/ws/broadcaster.py`：
+    * `PositionBroadcaster`：单协程拉模型聚合器，每秒读 `AgentManager.get_instance().list_agents()` 的内存快照（agent.code/fsm_state/position/battery/robot_id），拼成 `updates: [...]` 一次 emit `robot.position_updated` 到 `room='commander'`
+    * `_has_listeners('commander')`：用 `sio.manager.rooms.get('/', {}).get(room, {})` 判断；房间无人 → 跳过 emit（节流 + 避免无效 broadcast）
+    * 单 tick 异常 `logger.exception` 不让循环死亡（与 RobotAgent.run 同款保险丝）
+    * stop 用 stop_event + wait_for + 超时 cancel 兜底
+    * 模块级单例 `get_broadcaster()` / `reset_for_tests()`
+  - `main.py`：
+    * `import socketio` + `from app.ws.server import SOCKETIO_PATH, sio` + `from app.ws import handlers as ws_handlers` + `from app.ws.broadcaster import get_broadcaster`
+    * lifespan 顺序：startup 先 AgentManager 后 broadcaster；shutdown 反序
+    * 文件末尾：`ws_handlers.register_handlers(sio)` + `asgi_app = socketio.ASGIApp(sio, other_asgi_app=app, socketio_path=SOCKETIO_PATH)`
+    * 真实运行入口改为 `uvicorn app.main:asgi_app`；httpx ASGITransport 测试 REST 仍用 `app`（不破坏 P0–P3.4 的所有自检脚本）
+  - `pyproject.toml`：dev 依赖加 `aiohttp>=3.9,<4.0`，仅 AsyncClient 测试用，**服务端 AsyncServer ASGI 模式不依赖 aiohttp**
+- 设计决策：
+  - **拉模型 vs 推模型**：broadcaster 单协程读 AgentManager 快照（拉），不动 RobotAgent 的 `_emit_state_changed` 钩子（推）。理由：
+    1) WS_EVENTS §3 / §12.2 明文「batch 后 = 1 event/s ✓」；25 个 Agent 各自 emit 会变成 25 events/s × N clients
+    2) 不耦合 RobotAgent 与 sio：RobotAgent 测试不需要 mock socketio
+    3) 单点节流/采样/合并都好做（未来若要降到 0.5Hz 只改 broadcaster）
+    4) 同一 payload 内 25 个 update 自然有序
+  - **不 raise ConnectionRefusedError**：让握手在 namespace 层成功，再 emit auth_error + sio.disconnect。原因：raise 会让 socketio 在 namespace handshake 阶段就拒，先前的 emit 包来不及送达客户端，client 只看到一个泛型 ConnectionError 没有 reason。改成 emit + disconnect 后 client 可拿到 WS_EVENTS §0.2 规范的 `auth_error{reason}` 事件。
+  - **socketio_path='ws'**：让真实 URL 为 `ws://host:port/ws/?EIO=4&transport=...`，与 WS_EVENTS §0.2「ws://localhost:8000/ws」对齐
+  - **register_handlers 显式注册** 而非 `@sio.event` 装饰器：避免 import side effect，handler 注册时机由 main.py 控制（便于测试时按需注册子集）
+  - **房间访问规则**（WS_EVENTS §0.4 + 项目 commander/admin/observer 角色矩阵）：
+    * commander 房间 = commander 或 admin 角色
+    * admin 房间    = 仅 admin
+    * observer       = 可连接但不能加入任何房间（无推送）
+  - **broadcaster 仅在 mock_agents_enabled=True 时启动**：没有 Agent 数据可读时 broadcaster 是无意义的；自检 / pytest 默认不启动后台协程
+  - **房间无人 → 跳过 emit**：socketio.manager.rooms 路径检查，零成本节流
+  - **subscribe 部分成功**：rooms=['commander','admin'] 给 commander 用户 → 'commander' 加入 emit subscribed{rooms:['commander']}，'admin' 拒绝 emit subscribe_error
+- 测试验证（临时 backend/_p35_check.py，20/20 全绿，验证后已删除不入库；socketio.AsyncClient + httpx 直连 uvicorn 跑在 127.0.0.1:8765 + MOCK_AGENTS_ENABLED=true）：
+  - [setup] 即时插入 observer001 用户（observer 角色，password123），finally 清理
+  - [1] 无 token connect → 收 `auth_error{reason: invalid}` ✓
+  - [2] 篡改 token → `auth_error{reason: invalid}` ✓
+  - [3] 过期 token（jose 直接编一个 1 秒前过期的 access） → `auth_error{reason: token_expired}` ✓
+  - [4] commander 合法 connect → 收 1 条 `welcome`，含 user.username='commander001' / roles 含 'commander' / session_id / event_id ✓
+  - [5] commander 订阅 commander → `subscribed{rooms:['commander']}`，无 subscribe_error ✓
+  - [6] commander 订阅 admin → `subscribe_error{room:admin, reason:permission_denied}`，**无** subscribed 补发 ✓
+  - [7] observer 订阅 commander → 先收 welcome（可连接），订阅得 `subscribe_error{room:commander, reason:permission_denied}` ✓
+  - [8] admin 订阅 commander+admin → 1 条 `subscribed{rooms: {commander, admin}}`，无 error ✓
+  - [9] commander 订阅后 5.2s 收 5 条 `robot.position_updated`：
+    * len(updates)==25
+    * 字段完整（robot_id/robot_code/position/battery/fsm_state）
+    * position 含 lat/lng
+    * 25 个 robot_code 不重复
+    * payload 含 event_id + timestamp（WS_EVENTS §0.6 通用约定）
+  - [10] disconnect 客户端干净退出 ✓
+- 环境处理：
+  - venv 安装 `python-socketio==5.11.4`（连带 python-engineio 4.13.1 / simple-websocket 1.1.0 / wsproto 1.3.2 / bidict 0.23.1）；服务端 AsyncServer ASGI 模式无 aiohttp 依赖
+  - venv 加装 `aiohttp==3.13.5`（python-socketio AsyncClient 必需），写入 pyproject dev 段，避免后续测试同事采坑
+  - 测试用 socketio.AsyncClient `transports=['websocket']` 强制跳过 polling，避免 polling fallback
+- Git 提交：
+  - commit message：feat: P3.5 websocket server with batched robot.position_updated
+  - push 状态：待执行
+- 下一步建议：
+  - P3.6 故障与召回：
+    1. `POST /robots/{id}/recall`（BUSINESS_RULES §4）：校验 fsm_state ∈ {EXECUTING, BIDDING, RETURNING} → 写 human_interventions（type=recall, target_robot_id, reason）→ 推 `robot.recall_initiated`（WS_EVENTS §3，commander+admin 房间）
+    2. RobotAgent 接收召回信号：在 manager 层暴露 `request_recall(robot_id)` 让外部触发；Agent transit BIDDING/EXECUTING → RETURNING（FSM 已就位）
+    3. broadcaster 暂不需扩展：position_updated 已涵盖状态变化；fault_occurred / state_changed / recall_initiated 等"事件型"非高频推送在 P3.6 直接 `await sio.emit(..., room='commander')`
+    4. `intervention.recorded` 事件留 P5（HITL 干预审计阶段）
 
 ### P3.4 — Mock 行为：移动 / 电量 / robot_states 写入 / emit 钩子（2026-05-03）
 

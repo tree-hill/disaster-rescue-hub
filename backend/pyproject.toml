@@ -41,6 +41,9 @@ dev = [
     "httpx>=0.26,<0.27",
     "ruff>=0.3,<0.4",
     "mypy>=1.9,<1.10",
+    # python-socketio AsyncClient（仅 WS 自检 / 集成测试用）依赖 aiohttp 做 HTTP 握手；
+    # 服务端（AsyncServer ASGI 模式）不依赖 aiohttp。
+    "aiohttp>=3.9,<4.0",
 ]
 
 [tool.ruff]
