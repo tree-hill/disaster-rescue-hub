@@ -30,8 +30,8 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P5.1 rule engine for hard-constraint filtering before auction
-- Commit hash：（待回填）
-- 是否 push：是（待执行）
+- Commit hash：47014fc
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - backend/app/dispatch/__init__.py（新增）：dispatch 包标识
