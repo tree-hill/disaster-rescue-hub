@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P5 调度算法（P5.1 / P5.2 / P5.3 已完成）  
-当前任务：P5.4 拍卖编排服务（BUILD_ORDER §P5.4）  
+当前阶段：P5 调度算法（P5.1~P5.4 已完成，拍卖闭环跑通）  
+当前任务：P5.5 拍卖 REST 接口（BUILD_ORDER §P5.5）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P5.3 三种算法完成（`app/dispatch/algorithms/{base,hungarian,greedy,random,__init__}.py`：AuctionAlgorithm 抽象基类 + HungarianAuction（scipy.linear_sum_assignment + 1e6 INF 占位 + 1e5 guard）+ GreedyAuction（priority 升序、final_bid 最大、机器人不重用）+ RandomAuction（独立 Random(seed) 可复现，不污染全局 RNG）+ get_algorithm 工厂；统一接口 `solve(robots, tasks, bids: dict[(rid,tid), BidBreakdown]) -> {tid: rid}`，bids 缺即不合格；TaskEvalInput 加 `priority: int = 2`（仅 Greedy 用，向后兼容）；venv 补装 numpy 1.26.4 + scipy 1.12.0；68/68 自检全绿）。  
+备注：P5.4 拍卖编排服务完成（`app/services/dispatch_service.py` DispatchService.start_auction 全流程同事务原子写 auctions + bids + task_assignments + 状态机转移 PENDING→ASSIGNED；filter→bid→solve 之间用 perf_counter 量 decision_latency_ms；commit 后发 auction.started → auction.bid_submitted×N → auction.completed（无 eligible 时仅发 auction.failed）；DispatchSettings 全局算法单例（默认 HUNGARIAN，可被 set_algorithm 切换 + algorithm 参数显式覆盖单次拍卖）；新增 AuctionRepository / BidRepository + count_active_by_robot_bulk 批量 GROUP BY；event_bridge 加 4 个 auction.* commander 转推；99/99 自检全绿）。  
 
 ---
 
@@ -44,8 +44,7 @@
 
 ### To Do
 
-- [ ] P5.4 拍卖编排服务（BUILD_ORDER §P5.4）：`app/services/dispatch_service.py` start_auction 流程（候选 → RuleEngine.filter → 收集 bids → 算法求解 → 写 task_assignments + auctions + bids → 发事件 auction.started/bid_submitted/completed/failed，同事务 + decision_latency_ms 测量）
-- [ ] P5.5 拍卖 REST 接口（BUILD_ORDER §P5.5）：POST /dispatch/auction + GET/POST /dispatch/algorithm + GET /dispatch/auctions[/{id}]
+- [ ] P5.5 拍卖 REST 接口（BUILD_ORDER §P5.5）：POST /dispatch/auction（task:create）+ GET/POST /dispatch/algorithm（algorithm:switch）+ GET /dispatch/auctions[/{id}]（task:read），对照 API_SPEC §4
 - [ ] P5.6 HITL 改派（BUILD_ORDER §P5.6）：POST /dispatch/reassign 7 步（加锁 → 校验 → before → 执行 → after → intervention → WS）
 - [ ] P5.7 任务自动触发拍卖（BUILD_ORDER §P5.7）：监听 TaskCreatedEvent → 自动调用 start_auction + PENDING 30s 扫描重试
 - [ ] P5.8 跑通所有测试用例（BUILD_ORDER §P5.8）：ALGORITHM_TESTCASES.md TC-1~TC-10 + TC-E2E-1/2
@@ -56,6 +55,7 @@
 
 ### Done
 
+- [x] P5.4 拍卖编排服务：`app/services/dispatch_service.py` DispatchService.start_auction(task_id, *, algorithm=None) 全流程同事务原子写 auctions + bids + task_assignments + 状态机转移（PENDING→ASSIGNED）；filter→bid→solve 之间用 perf_counter 量 decision_latency_ms（论文 NFR < 2 秒）；commit 后发 auction.started → auction.bid_submitted×N → auction.completed（无 eligible 时直接 auction.failed，不发其他事件）；DispatchSettings 全局算法单例（默认 HUNGARIAN，可被 set_algorithm 切换 + algorithm 参数仅本次覆盖）；vision_boost 暂传 0（P6.1 黑板未建）；新增 AuctionRepository（save / find_by_id）+ BidRepository（save_many 批量）+ TaskAssignmentRepository.count_active_by_robot_bulk（单次 GROUP BY，避免 N+1）；event_bridge 加 4 个 auction.* → commander 房间转推 handler；99/99 自检全绿（覆盖 404 / 409 / no_eligible / Hungarian happy path / WS 事件序列与 payload 35 项 / DispatchSettings 全局切换 / algorithm 参数覆盖 / repo bulk）（2026-05-04，Claude Code）
 - [x] P5.3 三种算法 + 工厂：`app/dispatch/algorithms/{base,hungarian,greedy,random,__init__}.py`（AuctionAlgorithm 抽象基类 + HungarianAuction 用 scipy.optimize.linear_sum_assignment 全局最优 + GreedyAuction 按 priority 升序 + final_bid 最大 + 机器人不重用 + RandomAuction 独立 Random(seed) 可复现 + get_algorithm 工厂；统一接口 solve(robots, tasks, bids: dict[(rid,tid), BidBreakdown]) → {tid: rid}，bids 字典缺位即不合格）+ rule_engine.py 修改（TaskEvalInput 末尾 priority: int = 2，仅 Greedy 用，向后兼容 RuleEngine 行为不变）+ venv 补装 numpy 1.26.4 + scipy 1.12.0（pyproject 已声明字面）；68/68 自检全绿（factory+base 14 + Hungarian 11 包含 2×2 全局最优反例 1.7 vs 1.4 + Greedy 9 + Random 7 含同 seed 复现 + 通用契约 9 + 端到端集成 14 + priority 向后兼容 3 + import sanity 2）（2026-05-04，Claude Code）
 - [x] P5.2 出价计算：`app/dispatch/bidding.py`（BUSINESS_RULES §1 全部 5 个分量函数 + compute_full_bid 主入口；权重常量 W_DISTANCE=0.40 / W_BATTERY=0.20 / W_CAPABILITY=0.30 / W_LOAD=0.10、距离归一化 10 km、电量 sqrt、能力软匹配、MAX_LOAD=3、VISION_BOOST_FACTOR=1.5）+ `app/schemas/dispatch.py`（仅 BidBreakdownComponent / BidBreakdown，按 DATA_CONTRACTS §4.7 字面）；compute_full_bid 复用 P5.1 RobotEvalInput / TaskEvalInput，nearby_survivor_count 整数注入避免与 P6.1 Blackboard 耦合；模块零 IO；62/62 自检全绿（5 leaf 函数 27 项 + compute_full_bid 综合 27 项 + import sanity 8 项，含 Σ weighted=base_score 不变量、vision_boost 乘法不进 base、base_score ∈ [-0.10, 0.90] 端点）（2026-05-04，Claude Code）
 - [x] P5.1 规则引擎：`app/dispatch/rule_engine.py`（BUSINESS_RULES §3 全部 8 条硬约束 R1~R8 顺序短路 + RuleEngine.check / RuleEngine.filter 聚合统计 + 内置 haversine_km，R=6371 km）+ `RobotEvalInput` / `TaskEvalInput` 冻结 dataclass 显式入参（is_active / fsm_state / battery / position / type / capability / active_assignments_count；R8 计数由调用方从 task_assignments 注入）+ `app/dispatch/__init__.py` 包标识；模块零 IO 无 DB 依赖、import 不触发任何副作用；43/43 自检全绿（R1~R8 各自命中 + happy path + 短路顺序 2 项 + filter 聚合 8 项 + haversine 3 项 + import sanity 4 项）（2026-05-04，Claude Code）

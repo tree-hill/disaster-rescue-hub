@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P5 调度算法**（P5.1 规则引擎、P5.2 出价计算、P5.3 三种算法已落地）  
-当前任务：P5.4 拍卖编排服务（BUILD_ORDER §P5.4）  
-最近完成：P5.3 三种算法（`app/dispatch/algorithms/{base,hungarian,greedy,random,__init__}.py`：AuctionAlgorithm 抽象基类 + HungarianAuction（scipy.linear_sum_assignment + 1e6 INF 占位 + 1e5 guard）+ GreedyAuction（priority 升序 + max final_bid，机器人不重用）+ RandomAuction（独立 Random(seed) 可复现，不污染全局 RNG）+ `get_algorithm(name, *, seed=None)` 工厂；统一签名 `solve(robots, tasks, bids: dict[(rid,tid), BidBreakdown]) -> {tid: rid}`，bids 字典里没有的 (r,t) 视为不合格；TaskEvalInput 加 `priority: int = 2` 字段（仅 Greedy 用）；68/68 自检全绿）（2026-05-04）  
-下一任务：P5.4 拍卖编排服务（`app/services/dispatch_service.py`：start_auction 全流程 = 候选 → RuleEngine.filter → 收集 bids → 算法 solve → 写 task_assignments + auctions + bids 同事务 → 发事件，含 decision_latency_ms 测量）  
+当前阶段：**P5 调度算法**（P5.1~P5.4 已落地，拍卖闭环跑通）  
+当前任务：P5.5 拍卖 REST 接口（BUILD_ORDER §P5.5）  
+最近完成：P5.4 拍卖编排服务（`app/services/dispatch_service.py` DispatchService.start_auction(task_id, *, algorithm=None) 全流程：取任务 → 取 25 active 机器人 + 最新 robot_state + active 分配计数 → 合并构造 RobotEvalInput/TaskEvalInput → RuleEngine.filter → 全失败时写 Auction(FAILED) + auction.failed → 否则 compute_full_bid 每对 → 写 Auction(OPEN) + Bid×N → algorithm.solve → 有 winner 时更新 Auction(CLOSED, winner, decision_latency_ms) + 写 TaskAssignment + transit task PENDING→ASSIGNED → commit 后发 auction.started → bid_submitted×N → completed；DispatchSettings 全局算法单例（默认 HUNGARIAN，可被 set_algorithm 切换 + algorithm 参数显式覆盖）；事件总线 4 个 auction.* relay 加入 event_bridge；新增 AuctionRepository / BidRepository + TaskAssignmentRepository.count_active_by_robot_bulk；99/99 自检全绿）（2026-05-04）  
+下一任务：P5.5 拍卖 REST 接口（POST /dispatch/auction + GET/POST /dispatch/algorithm + GET /dispatch/auctions[/{id}]，对照 API_SPEC §4）  
 
 > 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 
@@ -95,6 +95,45 @@
 ---
 
 ## 已完成任务
+
+### P5.4 — 拍卖编排服务（2026-05-04）
+
+- 任务：P5.4（BUILD_ORDER §P5.4）
+- 执行工具：Claude Code
+- 修改类型：feat（新增 dispatch_service + 2 repo + auction.* WS 转推）
+- 涉及文件：
+  - `backend/app/services/dispatch_service.py`（新增）
+  - `backend/app/repositories/auction.py`（新增：save / find_by_id）
+  - `backend/app/repositories/bid.py`（新增：save_many 批量写入）
+  - `backend/app/repositories/task_assignment.py`（修改：追加 `count_active_by_robot_bulk`）
+  - `backend/app/ws/event_bridge.py`（修改：追加 4 个 auction.* relay）
+- 关键设计：
+  - **核心流程严格按 BUILD_ORDER §P5.4 串行**：取任务 → 校验 PENDING（否则 409）→ 取所有 active 机器人 + 最新 robot_state（find_latest_by_robot 逐机器人）+ 批量 active 分配计数（count_active_by_robot_bulk 单次 GROUP BY）→ 合并三处构造 RobotEvalInput → RuleEngine.filter → eligible == [] 时写 Auction(status=FAILED, decision_latency_ms, metadata.reason=no_eligible_robot) commit + 发 auction.failed → 否则 compute_full_bid 每对（nearby_survivor_count=0：P6.1 黑板未建）→ 写 Auction(status=OPEN) + Bid 行（save_many 批量）→ algorithm.solve（perf_counter 量 decision_latency_ms 起止）→ 有 winner 时更新 Auction(status=CLOSED, winner_robot_id, closed_at, decision_latency_ms) + 写 TaskAssignment(is_active=TRUE) + transit task PENDING→ASSIGNED → commit → 发 auction.started → auction.bid_submitted×N → auction.completed。
+  - **同事务原子性**（INV-G）：auction + bids + task_assignment + task.status 转移全部在同一个 AsyncSession 内 commit，避免「拍卖记录写了但分配没写」「分配写了但状态没转」的中间不一致。事件 publish 在 commit 之后，避免事务回滚后 WS 已发出造成幻觉（与 P4.5 task.cancelled 同款）。
+  - **`decision_latency_ms` 测量边界**：从「数据已取齐 + filter 完毕前」到「algorithm.solve() 返回」，纯算法决策时间，与论文 NFR「25×10 < 2 秒」对应；不含 DB I/O。
+  - **`DispatchSettings` 全局算法单例**：默认 HUNGARIAN；P5.5 POST /dispatch/algorithm 切换接口直接调 `set_algorithm`；start_auction 不传 algorithm 参数时读全局，传则**仅本次**覆盖（自检 G 验证全局不被覆盖）。set_algorithm 对未知名抛 ValueError，由 P5.5 API 层翻译。
+  - **vision_boost 仍传 0**：P6.1 黑板未建；compute_full_bid 默认 nearby_survivor_count=0；写库 `bids.vision_boost` 字段按 vision_boosted 标志存 1.5 / 1.0；当前 100% 失败检测路径走 1.0。P6.1 后只需 dispatch_service 加一行 `count = await blackboard.query_by_proximity(...)` 传给 compute_full_bid 即可。
+  - **数据稀疏兜底**：`_robot_to_eval_input(robot, state=None, count)` 在最新 robot_state 缺失时用 fsm=IDLE / battery=100 / position=(0,0)。(0,0) 与基地距离 > 12000 km，自然被 R7 out_of_range 过滤；不会假赢。
+  - **不发 task.status_changed**：BUILD_ORDER §P5.4 没显式要求；通用任务事件契约留给后续模块统一接入。本任务只完成 PENDING→ASSIGNED 状态机转移本身（task_status_machine.transit）。
+  - **事件总线 relay**：event_bridge.py 加 4 个 commander 房间转推 handler（auction.started / bid_submitted / completed / failed），与 P4.5 task.* 共存；register_ws_relays 仍幂等（subscribe 内部去重）。
+  - **空 active_robots 兜底**：极端场景全机器人 is_active=FALSE 时直接走 _fail_no_eligible，不走 filter（filter 输入为空也合法但日志意图不清）。
+- 测试验证：
+  - 99/99 自检全绿（临时脚本 `_check_p54.py`，通过后已删除）：
+    - I event_bridge 7 项（4 auction.* + 2 task.* 共存 + 重复注册幂等）
+    - H repo bulk 3 项（多机器人含 0 行兜底 + 空入参 → {}）
+    - A 404 不存在 3 项 / B 409 终态 3 项
+    - C 无 eligible（全 25 机器人 battery=10）11 项：auction.status=FAILED + closed_at + winner=None + algorithm 默认 + metadata.reason + filter_stats.low_battery=25 + 1 个 auction.failed 事件 + payload 6 键 + reason=no_eligible_robot + task 仍 PENDING
+    - D happy path Hungarian 16 项：auction.status=CLOSED + winner=robot 0（最近 + 最高电）+ algorithm + decision_latency_ms ≥ 0 + bids=3 + 4 components 键 + winner.bid_value ≥ others ×2 + assignment 关联完整 4 项 + task.status=ASSIGNED + started_at 仍 None
+    - E WS 事件序列与 payload 35 项：5 事件总数（started + 3×bid + completed）+ 顺序 + 全 commander 房间 ×5 + auction.started 7 键 + candidate_robot_count=3 + algorithm + bid_submitted 7 键 + vision_boosted=False + completed 10 键 + total_bidders=3 + vision_boost_applied=False + decision_latency_ms ≥ 0 + winner_robot_code 非空
+    - F DispatchSettings 全局切换 5 项（默认 + set GREEDY + 未知 ValueError + 用全局 + status=CLOSED）
+    - G algorithm 参数覆盖 3 项（显式 RANDOM + status=CLOSED + 全局未变）
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：
+  - BUILD_ORDER §P5.4 ✅；§P5.5 拍卖 REST 接口下一步实现，把 DispatchService.start_auction 暴露为 POST /dispatch/auction、DispatchSettings 暴露为 GET/POST /dispatch/algorithm。
+  - vision_boost 与 Blackboard 的真实接入仍待 P6.1；当前 nearby_survivor_count=0 hardcode。
+  - task.status_changed 事件本任务不发，留给后续统一接入。
+- 下一步建议：
+  - 进入 P5.5：先确认 API_SPEC §4 路由签名 + Pydantic schemas（AuctionRead / BidRead / AlgorithmSwitchRequest），然后把 DispatchService 的方法路由到 FastAPI；HITL 类操作（POST /dispatch/algorithm）需 algorithm:switch 权限 + 写 human_interventions 同模式。
 
 ### P5.3 — 三种算法 + 工厂（2026-05-04）
 

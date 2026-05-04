@@ -24,6 +24,28 @@
 
 ## 提交记录
 
+### 2026-05-04 — P5.4
+
+- 任务：P5.4 拍卖编排服务（dispatch_service.start_auction 全流程）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P5.4 dispatch service (start_auction) closing the auction loop end-to-end
+- Commit hash：（待回填）
+- 是否 push：是（待执行）
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/services/dispatch_service.py（新增）：DispatchService.start_auction(task_id, *, algorithm=None) 同事务原子写 auctions + bids + task_assignments + 状态机转移；filter→bid→solve 量 decision_latency_ms；commit 后 publish auction.started → bid_submitted×N → completed（或 failed）；DispatchSettings 全局算法单例（默认 HUNGARIAN，set_algorithm 切换 + algorithm 参数仅本次覆盖）
+  - backend/app/repositories/auction.py（新增）：AuctionRepository.save / find_by_id
+  - backend/app/repositories/bid.py（新增）：BidRepository.save_many 批量写入
+  - backend/app/repositories/task_assignment.py（修改）：追加 count_active_by_robot_bulk 单次 GROUP BY 批量统计 active 任务数（避免 dispatch_service N+1 查询）
+  - backend/app/ws/event_bridge.py（修改）：追加 4 个 auction.* → commander 房间转推 handler（auction.started / auction.bid_submitted / auction.completed / auction.failed）
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P5.4 完成记录
+- 自检：99/99 全绿（I event_bridge 7 + H repo bulk 3 + A 404 3 + B 409 3 + C 无 eligible 11 + D Hungarian happy 16 + E WS 序列与 payload 35 + F DispatchSettings 5 + G algorithm 覆盖 3 + ...），临时脚本 `_check_p54.py` 验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P5.3
 
 - 任务：P5.3 三种算法（Hungarian / Greedy / Random）+ 工厂

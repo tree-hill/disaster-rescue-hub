@@ -29,7 +29,28 @@ async def _relay_task_cancelled(payload: dict[str, Any]) -> None:
     await push_event("task.cancelled", payload, room="commander")
 
 
+async def _relay_auction_started(payload: dict[str, Any]) -> None:
+    await push_event("auction.started", payload, room="commander")
+
+
+async def _relay_auction_bid_submitted(payload: dict[str, Any]) -> None:
+    await push_event("auction.bid_submitted", payload, room="commander")
+
+
+async def _relay_auction_completed(payload: dict[str, Any]) -> None:
+    await push_event("auction.completed", payload, room="commander")
+
+
+async def _relay_auction_failed(payload: dict[str, Any]) -> None:
+    await push_event("auction.failed", payload, room="commander")
+
+
 def register_ws_relays(bus: EventBus) -> None:
     """订阅本任务范围内的 WS 转推 handler。subscribe 自带去重，幂等。"""
     bus.subscribe("task.created", _relay_task_created)
     bus.subscribe("task.cancelled", _relay_task_cancelled)
+    # P5.4 调度模块事件（commander 房间，对照 WS_EVENTS §5）
+    bus.subscribe("auction.started", _relay_auction_started)
+    bus.subscribe("auction.bid_submitted", _relay_auction_bid_submitted)
+    bus.subscribe("auction.completed", _relay_auction_completed)
+    bus.subscribe("auction.failed", _relay_auction_failed)

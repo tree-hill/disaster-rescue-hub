@@ -7,10 +7,11 @@
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.task import TaskAssignment
@@ -38,6 +39,35 @@ class TaskAssignmentRepository:
             stmt = stmt.where(TaskAssignment.is_active.is_(True))
         stmt = stmt.order_by(TaskAssignment.assigned_at.desc())
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def count_active_by_robot_bulk(
+        self, robot_ids: Iterable[UUID]
+    ) -> dict[UUID, int]:
+        """批量统计每个机器人的当前 active 任务数（is_active=TRUE）。
+
+        BUSINESS_RULES §3.2 R8（load_limit < 3）+ §1.2.4 L(r) 都需要此值。本方法
+        一次性 GROUP BY 查询，避免 dispatch_service 在 N 个机器人上循环各 1 次
+        SELECT。
+
+        返回字典：robot_id → count；输入列表中没出现 active 行的 robot_id 显式
+        填 0，调用方无需自行兜底 KeyError。
+        """
+        ids = list(robot_ids)
+        if not ids:
+            return {}
+        stmt = (
+            select(TaskAssignment.robot_id, func.count(TaskAssignment.id))
+            .where(
+                TaskAssignment.robot_id.in_(ids),
+                TaskAssignment.is_active.is_(True),
+            )
+            .group_by(TaskAssignment.robot_id)
+        )
+        rows = (await self.session.execute(stmt)).all()
+        result: dict[UUID, int] = {rid: 0 for rid in ids}
+        for rid, cnt in rows:
+            result[rid] = int(cnt)
+        return result
 
     async def release_active_for_task(
         self, task_id: UUID, *, released_at: datetime
