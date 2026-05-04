@@ -24,6 +24,25 @@
 
 ## 提交记录
 
+### 2026-05-04 — P5.1
+
+- 任务：P5.1 规则引擎（拍卖前硬约束过滤）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P5.1 rule engine for hard-constraint filtering before auction
+- Commit hash：（待回填）
+- 是否 push：是（待执行）
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/dispatch/__init__.py（新增）：dispatch 包标识
+  - backend/app/dispatch/rule_engine.py（新增）：BUSINESS_RULES §3 全部 8 条硬约束 R1~R8 顺序短路 + RuleEngine.check / RuleEngine.filter 聚合统计 + 内置 haversine_km（R=6371 km）+ RobotEvalInput / TaskEvalInput 冻结 dataclass 显式入参（R8 active_assignments_count 由调用方注入，模块零 IO 无 DB 依赖）
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md（修正）：之前误把「拍卖触发器」标为 P5.1，更正为「P5.1 = 规则引擎」「P5.7 = 拍卖触发器」并补完成记录
+- 自检：43/43 全绿（R1~R8 各自命中 + happy path + 短路顺序 2 项 + filter 聚合 8 项 + haversine 3 项 + import sanity 4 项），临时脚本 `_check_p51.py` 验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P4.5
 
 - 任务：P4.5 事件总线基础

@@ -9,10 +9,12 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P4 任务模块完整收口**，进入 P5 调度算法  
-当前任务：P5.1 拍卖触发器（BUILD_ORDER §P5.1）  
-最近完成：P4.5 事件总线基础（`app/core/event_bus.py` EventBus 单例 + asyncio.Queue + 后台 dispatcher 协程 + publish/subscribe 幂等 + handler 异常 logger.exception 隔离 + start/stop 优雅退出；`app/ws/event_bridge.py` register_ws_relays 把 task.created/cancelled 转推到 push_event；task_service 改用 bus.publish；lifespan 启动顺序 bus→agents→broadcaster，关闭反向；22/22 自检全绿）（2026-05-04）  
-下一任务：P5.1 拍卖触发器（监听 TaskCreatedEvent 自动 start_auction）  
+当前阶段：**P5 调度算法**（P5.1 规则引擎已落地）  
+当前任务：P5.2 出价计算（BUILD_ORDER §P5.2）  
+最近完成：P5.1 规则引擎（`app/dispatch/rule_engine.py` 实现 BUSINESS_RULES §3 全部 8 条硬约束 R1~R8 + RuleEngine.check 短路 + RuleEngine.filter 聚合统计 + 内置 haversine_km；`RobotEvalInput` / `TaskEvalInput` 显式入参，R8 的 active_assignments_count 由调用方注入，模块零 IO 无 DB 依赖；43/43 自检全绿）（2026-05-04）  
+下一任务：P5.2 出价计算（`app/dispatch/bidding.py`：5 个分量函数 + compute_full_bid → BidBreakdown，对照 BUSINESS_RULES §1）  
+
+> 修正记录（2026-05-04）：DEV_MEMORY / TASK_BOARD 之前把 BUILD_ORDER §P5.1 误标为「拍卖触发器（监听 TaskCreatedEvent → 自动 start_auction）」。BUILD_ORDER §P5.1 实为「规则引擎」，「拍卖触发器」是 §P5.7（监听 TaskCreatedEvent + 30s 扫描 PENDING）。本轮按 BUILD_ORDER 原序推进，先做 §P5.1 规则引擎；§P5.7 留到 P5.4 dispatch_service 落地后再实现。  
 
 ---
 
@@ -91,6 +93,38 @@
 ---
 
 ## 已完成任务
+
+### P5.1 — 规则引擎（2026-05-04）
+
+- 任务：P5.1（BUILD_ORDER §P5.1）
+- 执行工具：Claude Code
+- 修改类型：feat（新增 dispatch 包）
+- 涉及文件：
+  - `backend/app/dispatch/__init__.py`（新增）
+  - `backend/app/dispatch/rule_engine.py`（新增）
+- 关键设计：
+  - **零 IO + 零 DB session**：与 `services/task_status_machine.py` 同一思路，所有依赖通过 `RobotEvalInput` / `TaskEvalInput`（冻结 dataclass）显式输入。R8 `active_assignments_count` 由调用方（P5.4 dispatch_service）从 task_assignments 表查得后注入，避免规则引擎与 ORM 耦合，也避免「过滤一次扫一次表」的 N+1 风险。
+  - **8 条规则严格按 §3.2 表格顺序**：R1 inactive → R2 not_idle → R3 low_battery → R4 wrong_type → R5 missing_sensor → R6 missing_payload → R7 out_of_range → R8 overloaded。任一失败立即返回（短路），后续规则不再求值；`stats` 反映「首个命中的失败原因」，并非「所有失败原因」。
+  - **R3 `max(MIN_BATTERY_FLOOR_PCT=20.0, task.required.min_battery_pct)`**：业务底线 20% 不可被任务参数下调；任务可向上要求更高电量阈值（例如 50%）。
+  - **R4/R5/R6 处理「不限制」语义**：`robot_type=None or []` 视作不限定（schema 默认 None）；`sensors=[]` / `payloads=[]` 同理（空集合是任意集合的子集，issubset 自然返回 True）。
+  - **R7 球面距离**：内置 `haversine_km(lat1,lng1,lat2,lng2)`，R=6371。dist == max_range_km 视为通过（边界友好）。导出供 P5.2 出价的 distance_score 复用；若有需要再抽到 dispatch/geo.py（本任务不预抽，YAGNI）。
+  - **filter 稳定性**：合格列表保持输入顺序，便于上层算法在相同输入下产出可重放结果（论文实验需要的 determinism）。stats 仅含实际出现的原因，避免空键造成误导。
+  - **常量本地化**：`MIN_BATTERY_FLOOR_PCT=20.0`、`MAX_ACTIVE_ASSIGNMENTS=3`、`EARTH_RADIUS_KM=6371.0` 写在本模块；不放进 `core/constants.py`，避免 P5 一次性堆砌。
+  - **范围聚焦**：本任务**只**实现 RuleEngine 本身（纯函数），不接 event_bus、不接 dispatch_service、不写 REST、不持久化。这些副作用全部留给 P5.2~P5.7。
+- 测试验证：
+  - 43/43 自检全绿（临时脚本 `_check_p51.py`，通过后已删除）：
+    - R1~R8 各自命中失败 + 接受用例：R1 1 项 / R2 5 项（3 reject + 2 accept）/ R3 5 项（19.99 边界 + 20.0 边界 + 任务 50 时 49 reject + 51 accept + 任务 10 时仍按 20% 兜底）/ R4 4 项（None 不限 + [] 不限 + 白名单 reject + 白名单 accept）/ R5 3 项 / R6 2 项 / R7 3 项（同点 0 + 22km > 10km reject + 边界 dist==max accept）/ R8 3 项（count=2 accept + count=3 reject + count=10 reject）
+    - happy path 1 项
+    - 短路顺序 2 项（R1~R8 全失败时 R1 胜出；R1 通过时 R2 胜出）
+    - filter 聚合 8 项（混合 7 机器人保持顺序 + stats 仅含真实原因 + 全过 stats={} + 全失败 eligible=[]）
+    - haversine 3 项（同点 0、赤道对跖 ≈ π·R、1° lat ≈ 111.195 km）
+    - import sanity 4 项（reload 零 stdout/stderr + 常量稳定）
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：
+  - BUILD_ORDER §P5.1 ✅；§P5.2 出价计算下一步实现，会复用 haversine_km。
+  - 拍卖触发器（误植于 P5.1）实为 §P5.7，留给 P5.4 dispatch_service.start_auction 落地后再实现。
+- 下一步建议：
+  - 进入 P5.2，对照 BUSINESS_RULES §1.x 写 5 个分量函数 + compute_full_bid → `BidBreakdown`，参照本任务的「dataclass 显式入参 + 模块零 IO」风格。
 
 ### P4.5 — 事件总线基础（2026-05-04）
 

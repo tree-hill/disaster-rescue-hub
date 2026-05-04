@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P4 任务模块（**全部完成**）  
-当前任务：P5.1 拍卖触发器（下一阶段起点）  
+当前阶段：P5 调度算法（P5.1 已完成）  
+当前任务：P5.2 出价计算（BUILD_ORDER §P5.2）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P4.5 完成（`app/core/event_bus.py` EventBus 单例 + asyncio.Queue + 后台 dispatcher 协程 + publish/subscribe 幂等 + handler 异常隔离 + start/stop 优雅退出；`app/ws/event_bridge.py` register_ws_relays 把 task.created/cancelled 转推到 push_event；task_service 改用 bus.publish；lifespan 启停 bus；22/22 自检全绿）。**P4 阶段完整收口**，进入 P5 调度算法。  
+备注：P5.1 规则引擎完成（`app/dispatch/rule_engine.py` 实现 BUSINESS_RULES §3 全部 8 条硬约束 R1~R8，RuleEngine.check 短路 + RuleEngine.filter 聚合统计，内置 haversine_km；`RobotEvalInput` / `TaskEvalInput` 两个冻结 dataclass 作为显式入参，R8 active_assignments_count 由调用方注入；模块零 IO 无 DB 依赖；43/43 自检全绿）。**修正**：之前误把「拍卖触发器（监听 TaskCreatedEvent → start_auction）」标为 P5.1，实际 BUILD_ORDER §P5.1 = 规则引擎，「拍卖触发器」是 §P5.7（留给 P5.4 dispatch_service 落地之后再做）。  
 
 ---
 
@@ -44,7 +44,8 @@
 
 ### To Do
 
-- [ ] P5.1 拍卖触发器（BUILD_ORDER §P5.1）：监听 TaskCreatedEvent → 自动调用 start_auction；事件总线 subscribe + 调度服务初版
+- [ ] P5.2 出价计算（BUILD_ORDER §P5.2）：`app/dispatch/bidding.py` 5 个分量函数（distance / battery / capability_match / load / vision_boost）+ compute_full_bid → BidBreakdown，对照 BUSINESS_RULES §1
+- [ ] P5.7 任务自动触发拍卖（BUILD_ORDER §P5.7）：监听 TaskCreatedEvent → 自动调用 start_auction + PENDING 30s 扫描重试（依赖 P5.4 dispatch_service.start_auction）
 
 ### In Progress
 
@@ -52,6 +53,7 @@
 
 ### Done
 
+- [x] P5.1 规则引擎：`app/dispatch/rule_engine.py`（BUSINESS_RULES §3 全部 8 条硬约束 R1~R8 顺序短路 + RuleEngine.check / RuleEngine.filter 聚合统计 + 内置 haversine_km，R=6371 km）+ `RobotEvalInput` / `TaskEvalInput` 冻结 dataclass 显式入参（is_active / fsm_state / battery / position / type / capability / active_assignments_count；R8 计数由调用方从 task_assignments 注入）+ `app/dispatch/__init__.py` 包标识；模块零 IO 无 DB 依赖、import 不触发任何副作用；43/43 自检全绿（R1~R8 各自命中 + happy path + 短路顺序 2 项 + filter 聚合 8 项 + haversine 3 项 + import sanity 4 项）（2026-05-04，Claude Code）
 - [x] P4.5 事件总线基础：`app/core/event_bus.py`（EventBus 单例 + asyncio.Queue + 后台 dispatcher + publish/subscribe 幂等 + handler 异常 logger.exception 隔离 + start/stop 优雅退出 + reset_for_tests）+ `app/ws/event_bridge.py` register_ws_relays（task.created/cancelled → push_event 转推 commander 房间）+ task_service 两处 push_event 改为 bus.publish + lifespan 启停 bus；22/22 自检全绿（unit 13 + e2e 9，含 publish-before-start 丢弃 / 重复 start/stop no-op / 异常隔离 / 多 handler 并发 / 端到端 bus→bridge→sio.emit 链路 + payload 7 键）（2026-05-04，Claude Code）
 - [x] P4.4 其他任务接口：`api/v1/tasks.py` 5 个接口（GET 列表多过滤+分页 / GET /{id} TaskDetailRead 含 assignments+auctions[]占位 / GET /{id}/assignments / PUT /{id} 非终态 / POST /{id}/cancel）+ `services/task_service.py` 5 个方法（list_paginated / get_with_assignments / list_assignments / update / cancel 走状态机 transit + 释放 active assignments + 写 intervention + WS task.cancelled）+ `repositories/task.py` find_paginated（status_in / priority / type / created_by / search）+ `repositories/task_assignment.py`（save / find_by_task / release_active_for_task 批量更新）+ `schemas/task.py` 加 TaskAssignmentRead / TaskDetailRead / TaskCancelRequest + `scripts/seed.py` 给 commander/admin/observer 加 task:read，admin/observer 加 robot:read；38/38 自检全绿（含 WS payload 7 键 + intervention before/after_state + assignment 释放）（2026-05-04，Claude Code）
 - [x] P4.3 任务创建接口：`api/v1/tasks.py` POST /tasks + `services/task_service.py`（area service 层校验 → 422_TASK_INVALID_AREA_001 / advisory lock 按年分配 T-YYYY-NNN root code 重试 3 次 / area_km2 > 1 触发 500m × 500m 网格分解（rectangle/polygon/circle 共用 bbox 平铺，子任务 code T-YYYY-NNN-CC，parent_id 关联） / 父+子同事务 commit / 失败回滚 / commit 后 push WS task.created 到 commander 房间 child_count）+ `core/constants.py` 新增 4 个任务常量 + 移除 `schemas/task.py` 中 area_km2/radius_m 的 schema 层 gt=0；27/27 自检全绿（纯函数 11 + advisory lock 串行 1 + HTTP 15）（2026-05-04，Claude Code）
