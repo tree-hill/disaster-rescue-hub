@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P5 调度算法**（P5.1 规则引擎已落地）  
-当前任务：P5.2 出价计算（BUILD_ORDER §P5.2）  
-最近完成：P5.1 规则引擎（`app/dispatch/rule_engine.py` 实现 BUSINESS_RULES §3 全部 8 条硬约束 R1~R8 + RuleEngine.check 短路 + RuleEngine.filter 聚合统计 + 内置 haversine_km；`RobotEvalInput` / `TaskEvalInput` 显式入参，R8 的 active_assignments_count 由调用方注入，模块零 IO 无 DB 依赖；43/43 自检全绿）（2026-05-04）  
-下一任务：P5.2 出价计算（`app/dispatch/bidding.py`：5 个分量函数 + compute_full_bid → BidBreakdown，对照 BUSINESS_RULES §1）  
+当前阶段：**P5 调度算法**（P5.1 规则引擎、P5.2 出价计算已落地）  
+当前任务：P5.3 三种算法（BUILD_ORDER §P5.3）  
+最近完成：P5.2 出价计算（`app/dispatch/bidding.py` 实现 BUSINESS_RULES §1 全部 5 个分量函数 + compute_full_bid 主入口；权重 w₁=0.40 / w₂=0.20 / w₃=0.30 / w₄=0.10、距离归一化 10 km、电量平方根、能力软匹配、负载惩罚、vision_boost=1.5；`compute_full_bid` 复用 P5.1 RobotEvalInput/TaskEvalInput，nearby_survivor_count 整数注入避免与 P6.1 Blackboard 耦合；`app/schemas/dispatch.py` 新增 BidBreakdownComponent / BidBreakdown；62/62 自检全绿）（2026-05-04）  
+下一任务：P5.3 三种算法（`app/dispatch/algorithms/{base,hungarian,greedy,random}.py` + 工厂方法 get_algorithm，对照 BUSINESS_RULES §1.4）  
 
 > 修正记录（2026-05-04）：DEV_MEMORY / TASK_BOARD 之前把 BUILD_ORDER §P5.1 误标为「拍卖触发器（监听 TaskCreatedEvent → 自动 start_auction）」。BUILD_ORDER §P5.1 实为「规则引擎」，「拍卖触发器」是 §P5.7（监听 TaskCreatedEvent + 30s 扫描 PENDING）。本轮按 BUILD_ORDER 原序推进，先做 §P5.1 规则引擎；§P5.7 留到 P5.4 dispatch_service 落地后再实现。  
 
@@ -93,6 +93,43 @@
 ---
 
 ## 已完成任务
+
+### P5.2 — 出价计算（2026-05-04）
+
+- 任务：P5.2（BUILD_ORDER §P5.2）
+- 执行工具：Claude Code
+- 修改类型：feat（新增 dispatch.bidding + schemas.dispatch）
+- 涉及文件：
+  - `backend/app/dispatch/bidding.py`（新增）
+  - `backend/app/schemas/dispatch.py`（新增）
+- 关键设计：
+  - **5 个 leaf 函数取原始参数（与 §1.2 伪代码签名严格对齐）**：
+    - `compute_distance_score(robot_pos, task_center)`：Haversine 球面距离 + 10 km 线性归一化（dist=0 → 1，dist=10 → 0）。距离归一化与 R7 max_range_km 过滤**相互独立**：R7 按机种 max_range（10~100 km+）过滤，本函数始终用固定 10 km 归一化（论文公式不变），即便过 R7 也可能 D=0。
+    - `compute_battery_score(battery_pct)`：sqrt(battery/100)；<=20% 兜底返回 0（线上不应触发，因 R3 已过滤）；50% ≈ 0.7071、25% = 0.5、100% = 1.0。
+    - `compute_capability_match(cap, req)`：（命中 sensor + 命中 payload）/（要求 sensor + 要求 payload）；total_required=0 时返回 1.0（任务无要求 = 满分）。
+    - `compute_load_score(count)`：min(count / MAX_LOAD=3, 1.0)；count=0 时直接 0；超 3 截顶 1.0。
+    - `compute_vision_boost(has_yolo, nearby_survivor_count)`：has_yolo=False 永远 1.0；count=0 永远 1.0；has_yolo=True+count>0 → 1.5。
+  - **vision_boost 不直接持 Blackboard 引用**：BUILD_ORDER §P6.1 才建黑板，本任务用 `nearby_survivor_count` 整数注入（与 P5.1 R8 active_assignments_count 同款「调用方查询、引擎纯计算」模式）。P6.1 落地后，dispatch_service 通过 `blackboard.query_by_proximity(center=task.center, radius_m=200, type_filter='survivor', min_confidence=0.8)` 得到数量传进来即可，bidding 模块零修改。
+  - **compute_full_bid 复用 RobotEvalInput / TaskEvalInput**：避免再造一套视图类型；与 P5.1 RuleEngine 用同一份输入，「过滤 → 出价」无缝衔接。
+  - **BidBreakdown 严格对照 DATA_CONTRACTS §4.7**：base_score + components(4 键) + vision_boosted + final_bid；components 键固定为 `distance / battery / capability / load`，每条带 value（[0,1] 原始分）+ weighted（加权后值，load 取 −w₄ 负号）。Σ weighted == base_score 是不变量（自检覆盖）。
+  - **vision_boost 是乘法不是加法**：base_score 不变，final = base × boost；写库时 `bids.breakdown.vision_boosted = True` 用于审计，论文核心创新点。
+  - **极端边界 base_score ∈ [-0.10, 0.90]**：理想机器人=0.90（D=B=C=1, L=0）；最差=−0.10（D=B=C=0, L=1）。自检覆盖两端。
+  - **范围聚焦**：本任务**只**实现公式与审计结构；不接 event_bus、不接 dispatch_service、不写 REST、不查 DB、不调 Blackboard。这些副作用全部留给 P5.4。
+- 测试验证：
+  - 62/62 自检全绿（临时脚本 `_check_p52.py`，通过后已删除）：
+    - compute_distance_score 5 项（dist=0/5km/10km/远超 + 5km offset 实测距离校验）
+    - compute_battery_score 7 项（100/50/25/20/19.99/floor 常量/21）
+    - compute_capability_match 5 项（无要求/全匹配/1-of-2/0-of-1/混合 2/3）
+    - compute_load_score 5 项（count=0/1/2/3/99 截顶）
+    - compute_vision_boost 5 项（no-yolo+0/no-yolo+5/yolo+0/yolo+1/yolo+99）
+    - compute_full_bid 综合 27 项（A 理想机器人 .90 / B vision boost final=base×1.5 / C 无 yolo 即使有幸存者也无加成 / D 远距+中电+负载下 Σ weighted=base_score 不变量 + 各分量符号 / E components 4 键固定 / F MAX_LOAD 边界 weighted=-w₄ / G dist>10km 距离分=0 / H 极端 worst case base=−0.10）
+    - import sanity 8 项（reload 零 stdout/stderr + 4 权重 + boost factor + cap/load 常量稳定）
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：
+  - BUILD_ORDER §P5.2 ✅；§P5.3 三种算法（Hungarian/Greedy/Random）下一步实现，会调用 compute_full_bid 构建代价矩阵。
+  - vision_boost 与 Blackboard 的对接放到 P5.4 dispatch_service.start_auction 中（届时 nearby_survivor_count 真实查询；P6.1 之前一直传 0）。
+- 下一步建议：
+  - 进入 P5.3：`app/dispatch/algorithms/base.py` 抽象基类 → hungarian.py（scipy.optimize.linear_sum_assignment）→ greedy.py → random.py → __init__.py 工厂 get_algorithm(name)。
 
 ### P5.1 — 规则引擎（2026-05-04）
 

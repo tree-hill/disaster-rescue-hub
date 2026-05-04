@@ -24,6 +24,25 @@
 
 ## 提交记录
 
+### 2026-05-04 — P5.2
+
+- 任务：P5.2 出价计算（5 分量 + compute_full_bid → BidBreakdown）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P5.2 bidding formulas with vision boost decoupled from blackboard
+- Commit hash：（待回填）
+- 是否 push：是（待执行）
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/dispatch/bidding.py（新增）：BUSINESS_RULES §1 全部 5 个分量函数（compute_distance_score haversine + 10 km 归一化 / compute_battery_score sqrt / compute_capability_match 软匹配 / compute_load_score MAX_LOAD=3 截顶 / compute_vision_boost has_yolo + 整数计数）+ compute_full_bid 主入口（base_score 加权 + vision_boost 乘法 → final_bid，复用 P5.1 RobotEvalInput / TaskEvalInput，nearby_survivor_count 整数注入避免与 P6.1 Blackboard 耦合）
+  - backend/app/schemas/dispatch.py（新增）：仅 BidBreakdownComponent / BidBreakdown 两个 Pydantic 模型，对照 DATA_CONTRACTS §4.7；AuctionRead / BidRead 等留 P5.4 / P5.5 实现时增量补充
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P5.2 完成记录
+- 自检：62/62 全绿（5 leaf 函数 27 项 + compute_full_bid 综合 27 项 + import sanity 8 项，含 Σ weighted=base_score 不变量、vision_boost 乘法不进 base、base_score ∈ [-0.10, 0.90] 两端、dist>10km 距离分=0、no-yolo 永远不享受加成），临时脚本 `_check_p52.py` 验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P5.1
 
 - 任务：P5.1 规则引擎（拍卖前硬约束过滤）

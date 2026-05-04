@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P5 调度算法（P5.1 已完成）  
-当前任务：P5.2 出价计算（BUILD_ORDER §P5.2）  
+当前阶段：P5 调度算法（P5.1 / P5.2 已完成）  
+当前任务：P5.3 三种算法（BUILD_ORDER §P5.3）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P5.1 规则引擎完成（`app/dispatch/rule_engine.py` 实现 BUSINESS_RULES §3 全部 8 条硬约束 R1~R8，RuleEngine.check 短路 + RuleEngine.filter 聚合统计，内置 haversine_km；`RobotEvalInput` / `TaskEvalInput` 两个冻结 dataclass 作为显式入参，R8 active_assignments_count 由调用方注入；模块零 IO 无 DB 依赖；43/43 自检全绿）。**修正**：之前误把「拍卖触发器（监听 TaskCreatedEvent → start_auction）」标为 P5.1，实际 BUILD_ORDER §P5.1 = 规则引擎，「拍卖触发器」是 §P5.7（留给 P5.4 dispatch_service 落地之后再做）。  
+备注：P5.2 出价计算完成（`app/dispatch/bidding.py` 5 分量函数 + compute_full_bid → BidBreakdown，权重 0.40/0.20/0.30/0.10、距离 10 km 归一化、电量 sqrt、能力软匹配、负载惩罚、vision_boost=1.5；`compute_full_bid` 复用 P5.1 RobotEvalInput/TaskEvalInput；nearby_survivor_count 整数注入避免与 P6.1 Blackboard 耦合；`app/schemas/dispatch.py` 新增 BidBreakdownComponent / BidBreakdown；62/62 自检全绿）。  
 
 ---
 
@@ -44,8 +44,9 @@
 
 ### To Do
 
-- [ ] P5.2 出价计算（BUILD_ORDER §P5.2）：`app/dispatch/bidding.py` 5 个分量函数（distance / battery / capability_match / load / vision_boost）+ compute_full_bid → BidBreakdown，对照 BUSINESS_RULES §1
-- [ ] P5.7 任务自动触发拍卖（BUILD_ORDER §P5.7）：监听 TaskCreatedEvent → 自动调用 start_auction + PENDING 30s 扫描重试（依赖 P5.4 dispatch_service.start_auction）
+- [ ] P5.3 三种算法（BUILD_ORDER §P5.3）：`app/dispatch/algorithms/{base,hungarian,greedy,random}.py` + `__init__.py` 工厂 get_algorithm(name)，对照 BUSINESS_RULES §1.4
+- [ ] P5.4 拍卖编排服务（BUILD_ORDER §P5.4）：`app/services/dispatch_service.py` start_auction 流程（候选 → RuleEngine.filter → 收集 bids → 算法求解 → 写 task_assignments → 发事件，同事务 + decision_latency_ms）
+- [ ] P5.7 任务自动触发拍卖（BUILD_ORDER §P5.7）：监听 TaskCreatedEvent → 自动调用 start_auction + PENDING 30s 扫描重试
 
 ### In Progress
 
@@ -53,6 +54,7 @@
 
 ### Done
 
+- [x] P5.2 出价计算：`app/dispatch/bidding.py`（BUSINESS_RULES §1 全部 5 个分量函数 + compute_full_bid 主入口；权重常量 W_DISTANCE=0.40 / W_BATTERY=0.20 / W_CAPABILITY=0.30 / W_LOAD=0.10、距离归一化 10 km、电量 sqrt、能力软匹配、MAX_LOAD=3、VISION_BOOST_FACTOR=1.5）+ `app/schemas/dispatch.py`（仅 BidBreakdownComponent / BidBreakdown，按 DATA_CONTRACTS §4.7 字面）；compute_full_bid 复用 P5.1 RobotEvalInput / TaskEvalInput，nearby_survivor_count 整数注入避免与 P6.1 Blackboard 耦合；模块零 IO；62/62 自检全绿（5 leaf 函数 27 项 + compute_full_bid 综合 27 项 + import sanity 8 项，含 Σ weighted=base_score 不变量、vision_boost 乘法不进 base、base_score ∈ [-0.10, 0.90] 端点）（2026-05-04，Claude Code）
 - [x] P5.1 规则引擎：`app/dispatch/rule_engine.py`（BUSINESS_RULES §3 全部 8 条硬约束 R1~R8 顺序短路 + RuleEngine.check / RuleEngine.filter 聚合统计 + 内置 haversine_km，R=6371 km）+ `RobotEvalInput` / `TaskEvalInput` 冻结 dataclass 显式入参（is_active / fsm_state / battery / position / type / capability / active_assignments_count；R8 计数由调用方从 task_assignments 注入）+ `app/dispatch/__init__.py` 包标识；模块零 IO 无 DB 依赖、import 不触发任何副作用；43/43 自检全绿（R1~R8 各自命中 + happy path + 短路顺序 2 项 + filter 聚合 8 项 + haversine 3 项 + import sanity 4 项）（2026-05-04，Claude Code）
 - [x] P4.5 事件总线基础：`app/core/event_bus.py`（EventBus 单例 + asyncio.Queue + 后台 dispatcher + publish/subscribe 幂等 + handler 异常 logger.exception 隔离 + start/stop 优雅退出 + reset_for_tests）+ `app/ws/event_bridge.py` register_ws_relays（task.created/cancelled → push_event 转推 commander 房间）+ task_service 两处 push_event 改为 bus.publish + lifespan 启停 bus；22/22 自检全绿（unit 13 + e2e 9，含 publish-before-start 丢弃 / 重复 start/stop no-op / 异常隔离 / 多 handler 并发 / 端到端 bus→bridge→sio.emit 链路 + payload 7 键）（2026-05-04，Claude Code）
 - [x] P4.4 其他任务接口：`api/v1/tasks.py` 5 个接口（GET 列表多过滤+分页 / GET /{id} TaskDetailRead 含 assignments+auctions[]占位 / GET /{id}/assignments / PUT /{id} 非终态 / POST /{id}/cancel）+ `services/task_service.py` 5 个方法（list_paginated / get_with_assignments / list_assignments / update / cancel 走状态机 transit + 释放 active assignments + 写 intervention + WS task.cancelled）+ `repositories/task.py` find_paginated（status_in / priority / type / created_by / search）+ `repositories/task_assignment.py`（save / find_by_task / release_active_for_task 批量更新）+ `schemas/task.py` 加 TaskAssignmentRead / TaskDetailRead / TaskCancelRequest + `scripts/seed.py` 给 commander/admin/observer 加 task:read，admin/observer 加 robot:read；38/38 自检全绿（含 WS payload 7 键 + intervention before/after_state + assignment 释放）（2026-05-04，Claude Code）
