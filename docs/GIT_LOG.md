@@ -30,8 +30,8 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P5.3 auction algorithms (Hungarian/Greedy/Random) with factory
-- Commit hash：（待回填）
-- 是否 push：是（待执行）
+- Commit hash：f3d1889
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - backend/app/dispatch/algorithms/__init__.py（新增）：公开接口 + get_algorithm(name, *, seed) 工厂
