@@ -30,8 +30,8 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P5.4 dispatch service (start_auction) closing the auction loop end-to-end
-- Commit hash：（待回填）
-- 是否 push：是（待执行）
+- Commit hash：8fcdeb1
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - backend/app/services/dispatch_service.py（新增）：DispatchService.start_auction(task_id, *, algorithm=None) 同事务原子写 auctions + bids + task_assignments + 状态机转移；filter→bid→solve 量 decision_latency_ms；commit 后 publish auction.started → bid_submitted×N → completed（或 failed）；DispatchSettings 全局算法单例（默认 HUNGARIAN，set_algorithm 切换 + algorithm 参数仅本次覆盖）
