@@ -30,8 +30,8 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P5.2 bidding formulas with vision boost decoupled from blackboard
-- Commit hash：（待回填）
-- 是否 push：是（待执行）
+- Commit hash：9b0a0d7
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - backend/app/dispatch/bidding.py（新增）：BUSINESS_RULES §1 全部 5 个分量函数（compute_distance_score haversine + 10 km 归一化 / compute_battery_score sqrt / compute_capability_match 软匹配 / compute_load_score MAX_LOAD=3 截顶 / compute_vision_boost has_yolo + 整数计数）+ compute_full_bid 主入口（base_score 加权 + vision_boost 乘法 → final_bid，复用 P5.1 RobotEvalInput / TaskEvalInput，nearby_survivor_count 整数注入避免与 P6.1 Blackboard 耦合）
