@@ -24,6 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-04 — P5.3
+
+- 任务：P5.3 三种算法（Hungarian / Greedy / Random）+ 工厂
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P5.3 auction algorithms (Hungarian/Greedy/Random) with factory
+- Commit hash：（待回填）
+- 是否 push：是（待执行）
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/dispatch/algorithms/__init__.py（新增）：公开接口 + get_algorithm(name, *, seed) 工厂
+  - backend/app/dispatch/algorithms/base.py（新增）：AuctionAlgorithm 抽象基类 + 算法名常量 ALGORITHM_HUNGARIAN/GREEDY/RANDOM + KNOWN_ALGORITHMS frozenset
+  - backend/app/dispatch/algorithms/hungarian.py（新增）：scipy.linear_sum_assignment + INF_COST=1e6 占位 + INF_COST_GUARD=1e5 过滤
+  - backend/app/dispatch/algorithms/greedy.py（新增）：priority 升序 + max final_bid + 机器人不重用
+  - backend/app/dispatch/algorithms/random.py（新增）：独立 Random(seed) 实例避免污染全局 RNG，文件名与 stdlib 同名故 `import random as _random`
+  - backend/app/dispatch/rule_engine.py（修改）：TaskEvalInput 末尾追加 `priority: int = 2`（默认普通优先级，仅 GreedyAuction 用，RuleEngine.check / filter 不读，向后兼容）
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P5.3 完成记录 + 环境补装 numpy/scipy 备注
+- 环境补装：venv 补装 numpy 1.26.4 + scipy 1.12.0（pyproject 已声明字面，仅是先前未 pip install）
+- 自检：68/68 全绿（factory+base 14 + Hungarian 11 含 2×2 全局最优反例 1.7 vs 贪心 1.4 + Greedy 9 + Random 7 含同 seed 可复现 + 通用契约 9 + 端到端集成 14 + priority 向后兼容 3 + import sanity 2），临时脚本 `_check_p53.py` 验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P5.2
 
 - 任务：P5.2 出价计算（5 分量 + compute_full_bid → BidBreakdown）

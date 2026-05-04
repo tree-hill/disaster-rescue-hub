@@ -9,10 +9,12 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P5 调度算法**（P5.1 规则引擎、P5.2 出价计算已落地）  
-当前任务：P5.3 三种算法（BUILD_ORDER §P5.3）  
-最近完成：P5.2 出价计算（`app/dispatch/bidding.py` 实现 BUSINESS_RULES §1 全部 5 个分量函数 + compute_full_bid 主入口；权重 w₁=0.40 / w₂=0.20 / w₃=0.30 / w₄=0.10、距离归一化 10 km、电量平方根、能力软匹配、负载惩罚、vision_boost=1.5；`compute_full_bid` 复用 P5.1 RobotEvalInput/TaskEvalInput，nearby_survivor_count 整数注入避免与 P6.1 Blackboard 耦合；`app/schemas/dispatch.py` 新增 BidBreakdownComponent / BidBreakdown；62/62 自检全绿）（2026-05-04）  
-下一任务：P5.3 三种算法（`app/dispatch/algorithms/{base,hungarian,greedy,random}.py` + 工厂方法 get_algorithm，对照 BUSINESS_RULES §1.4）  
+当前阶段：**P5 调度算法**（P5.1 规则引擎、P5.2 出价计算、P5.3 三种算法已落地）  
+当前任务：P5.4 拍卖编排服务（BUILD_ORDER §P5.4）  
+最近完成：P5.3 三种算法（`app/dispatch/algorithms/{base,hungarian,greedy,random,__init__}.py`：AuctionAlgorithm 抽象基类 + HungarianAuction（scipy.linear_sum_assignment + 1e6 INF 占位 + 1e5 guard）+ GreedyAuction（priority 升序 + max final_bid，机器人不重用）+ RandomAuction（独立 Random(seed) 可复现，不污染全局 RNG）+ `get_algorithm(name, *, seed=None)` 工厂；统一签名 `solve(robots, tasks, bids: dict[(rid,tid), BidBreakdown]) -> {tid: rid}`，bids 字典里没有的 (r,t) 视为不合格；TaskEvalInput 加 `priority: int = 2` 字段（仅 Greedy 用）；68/68 自检全绿）（2026-05-04）  
+下一任务：P5.4 拍卖编排服务（`app/services/dispatch_service.py`：start_auction 全流程 = 候选 → RuleEngine.filter → 收集 bids → 算法 solve → 写 task_assignments + auctions + bids 同事务 → 发事件，含 decision_latency_ms 测量）  
+
+> 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 
 > 修正记录（2026-05-04）：DEV_MEMORY / TASK_BOARD 之前把 BUILD_ORDER §P5.1 误标为「拍卖触发器（监听 TaskCreatedEvent → 自动 start_auction）」。BUILD_ORDER §P5.1 实为「规则引擎」，「拍卖触发器」是 §P5.7（监听 TaskCreatedEvent + 30s 扫描 PENDING）。本轮按 BUILD_ORDER 原序推进，先做 §P5.1 规则引擎；§P5.7 留到 P5.4 dispatch_service 落地后再实现。  
 
@@ -93,6 +95,46 @@
 ---
 
 ## 已完成任务
+
+### P5.3 — 三种算法 + 工厂（2026-05-04）
+
+- 任务：P5.3（BUILD_ORDER §P5.3）
+- 执行工具：Claude Code
+- 修改类型：feat（新增 dispatch.algorithms 子包）+ chore（venv 补装 numpy/scipy）
+- 涉及文件：
+  - `backend/app/dispatch/algorithms/__init__.py`（新增）
+  - `backend/app/dispatch/algorithms/base.py`（新增）
+  - `backend/app/dispatch/algorithms/hungarian.py`（新增）
+  - `backend/app/dispatch/algorithms/greedy.py`（新增）
+  - `backend/app/dispatch/algorithms/random.py`（新增）
+  - `backend/app/dispatch/rule_engine.py`（修改：`TaskEvalInput` 末尾追加 `priority: int = 2`）
+- 关键设计：
+  - **统一接口签名**：`solve(robots, tasks, bids: dict[(robot_id, task_id), BidBreakdown]) -> dict[task_id, robot_id]`。「字典里有 = 合格 + 已出价」「字典里没有 = 不合格 / 跳过」，三种算法不再各自判合格性，dispatch_service 流程单一可读：filter → 算 bids → solve。
+  - **Hungarian**：n×m 代价矩阵默认 INF_COST=1e6，eligible 处填 `-final_bid`；scipy.optimize.linear_sum_assignment 求解后用 `cost >= INF_COST_GUARD=1e5` 过滤占位分配（避免误把 INF 当成真实赢家）。非方阵情况 scipy 自动按 min(n,m) 取，多余行/列被忽略，符合「robots 多于 tasks 时部分机器人空闲」「tasks 多于 robots 时部分任务回 PENDING」。
+  - **Greedy**：`sorted(tasks, key=lambda t: t.priority)`（1=最高，Python sort 稳定保持同级输入序）；每任务 `max(candidates, key=final_bid)`（max 同值返首个 → 稳定）；`used_robots: set` 保证机器人不重用。
+  - **Random**：每次 solve **新建** `Random(self._seed)` 实例 → 同 seed 同输入产出同结果（可复现）；`rng.sample(list(tasks), len(tasks))` 不修改原 tasks；`rng.choice(candidates)` 选机器人。文件名 `random.py` 与 stdlib 同名，内部 `import random as _random` 显式区分。
+  - **工厂 `get_algorithm(name, *, seed=None)`**：seed 仅对 Random 生效；Hungarian/Greedy 是确定性算法不受影响；未知名抛 `ValueError`，P5.5 REST 接口落地时由 API 层翻译为 BusinessError。
+  - **算法名常量**：`AUCTION_HUNGARIAN / GREEDY / RANDOM` 与 DATA_CONTRACTS §5 auctions.algorithm Literal 字面对齐；`KNOWN_ALGORITHMS: frozenset` 供 P5.5 入参校验。
+  - **TaskEvalInput.priority 字段**：P5.1 内部 dataclass 末尾加 `priority: int = 2`（默认普通优先级，与 schema 层 TaskCreate.priority 默认一致）。**纯加性、不破坏 P5.1/P5.2**：RuleEngine.check / filter 不读 priority、compute_full_bid 不读 priority；仅 Greedy 用作排序键。自检覆盖向后兼容性（默认 priority=2、自定义 priority=1、RuleEngine 行为不受影响）。
+  - **范围聚焦**：本任务**只**实现求解器；不接 event_bus / dispatch_service / DB / REST。算法可在 ALGORITHM_TESTCASES.md 的 TC-1~TC-10 中被纯函数式覆盖（P5.8）。
+- 环境补装：
+  - venv 之前缺 numpy + scipy（pyproject 已声明），按字面约束装 numpy 1.26.4 + scipy 1.12.0，`pip install "numpy>=1.26,<2.0" "scipy>=1.12,<1.13"` 通过；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
+- 测试验证：
+  - 68/68 自检全绿（临时脚本 `_check_p53.py`，通过后已删除）：
+    - 工厂 + 基类 14 项（3 算法名常量字面 + KNOWN_ALGORITHMS frozenset + 工厂 3 类型 + seed 透传 + ValueError 含错误消息 + 抽象基类不可实例化 + 3 子类 name 类属性）
+    - HungarianAuction 11 项（空输入 3 + 1×1 + 全不合格 + 2×2 全局最优反例（贪心选 1.4 vs 匈牙利选 1.7）+ 部分不合格退化 + 3×2 + 2×3 跳过无 bid 任务）
+    - GreedyAuction 9 项（空输入 2 + 高优先抢最佳机器人 + 同 priority 输入序稳定 + 无候选跳过 + 1 robot 2 tasks 不重用）
+    - RandomAuction 7 项（空输入 2 + 同 seed 同结果 + 同实例多次同结果 + 不重用 + 不同 seed 不同结果（8 robots × 5 tasks 拉大空间）+ 不修改输入 tasks）
+    - 通用契约 9 项（3 算法 × 3 项：task_id/robot_id 都来自输入、每个分配都是 bidded 对）
+    - 与 RuleEngine + bidding 端到端 14 项（filter 后 2 合格 + stats=low_battery + 3 算法 × 4 项：1 分配 + task 入字典 + winner 合格 + bad 不被选）
+    - TaskEvalInput.priority 向后兼容 3 项（默认 2 / 自定义 1 / RuleEngine 忽略 priority）
+    - import sanity 2 项（algorithms 包 reload 零 stdout/stderr）
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：
+  - BUILD_ORDER §P5.3 ✅；§P5.4 拍卖编排服务下一步实现，把 RuleEngine.filter + compute_full_bid + algorithm.solve 串到 dispatch_service.start_auction，同事务写 auctions + bids + task_assignments，发 auction.* 系列 WS 事件。
+  - vision_boost 与 Blackboard 对接仍延后到 P5.4（P6.1 黑板就绪后 dispatch_service 才能传真实 nearby_survivor_count；之前一直传 0 = 无加成）。
+- 下一步建议：
+  - 进入 P5.4：先想清 auctions / bids 的 ORM 模型有没有缺字段（DATA_CONTRACTS §1 表结构），再写 dispatch_service.start_auction 主流程；同事务保证 auction + bids + assignments 原子；decision_latency_ms 用 perf_counter 起止差测量；事件 auction.started / auction.bid_submitted / auction.completed / auction.failed 接 event_bus（P4.5 已就绪）。
 
 ### P5.2 — 出价计算（2026-05-04）
 

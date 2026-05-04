@@ -75,13 +75,21 @@ class RobotEvalInput:
 class TaskEvalInput:
     """RuleEngine 评估任务所需的输入快照。
 
-    由 dispatch_service 从 tasks 表读出后构造；只用到 required_capabilities 与
-    target_area.center_point，其余字段（status / priority / sla 等）跟硬约束无关。
+    由 dispatch_service 从 tasks 表读出后构造。
+
+    字段使用边界：
+    - id / required_capabilities / target_area.center_point：RuleEngine 硬约束需要
+    - priority：仅 P5.3 GreedyAuction 在多任务批量调度时用作排序键（1=最高，2=普
+      通，3=最低）；RuleEngine.check / RuleEngine.filter 不读此字段，对硬约束行为
+      无影响。默认 2 是 schema 层 TaskCreate.priority 的默认值，调用方未显式传入
+      时按「普通优先级」处理。
+    - 其余字段（status / sla 等）跟硬约束 + 出价 + 算法都无关，故不放进视图。
     """
 
     id: UUID
     required_capabilities: TaskRequiredCapabilities
     target_area: TargetArea
+    priority: int = 2
 
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
