@@ -24,6 +24,27 @@
 
 ## 提交记录
 
+### 2026-05-09 — P5.7
+
+- 任务：P5.7 任务自动触发拍卖（task.created auto-trigger + PENDING 30s scanner）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P5.7 auto-trigger auctions on task.created + PENDING scanner
+- Commit hash：(本任务 commit 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/services/dispatch_trigger.py（新增）：`_try_start_auction(task_id)`（独立 session + BusinessError 404/409 静默 + 真实异常 logger.exception）+ `_on_task_created(payload)`（task.created handler，child_count>0 走 `TaskRepository.find_by_parent` 逐子触发，==0 直接触发当前 task）+ `register_auto_trigger(bus)` 订阅 EVT_TASK_CREATED + `PendingAuctionScanner(interval_sec)`（asyncio.Event 优雅停 + wait_for(timeout) + interval<=0 启动是 no-op + 重复 start/stop 幂等 + _scan_once 调 find_pending_leaves）+ `get_pending_auction_scanner` 单例 + `reset_scanner_for_tests`
+  - backend/app/repositories/task.py（扩展）：`find_by_parent(parent_id)`（按 code ASC，便于稳定枚举）+ `find_pending_leaves`（distinct(parent_id WHERE NOT NULL).notin_ 子查询 + priority ASC + created_at ASC，跳过被 P4.3 网格分解的父任务）
+  - backend/app/core/config.py（扩展）：`dispatch_auto_trigger_enabled: bool = True` + `dispatch_pending_scan_interval_sec: float = 30.0`（.env 可覆盖；测试场景设 0 仅停 scanner，flag 设 False 禁全部）
+  - backend/app/main.py（修改）：lifespan startup `register_ws_relays → register_auto_trigger（按 settings） → bus.start → scanner.start（interval>0 才启）→ AgentManager`；shutdown 反序 `broadcaster → AgentManager → scanner → bus`，让 service 层最后一波 task.* 事件能被 dispatcher 消费完才停 bus
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P5.7 完成记录；当前阶段更新到「P5.1~P5.7 已完成，下一任务 P5.8」
+- 自检：17/17 全绿（A 单任务 task.created → ASSIGNED 4 项；B 父+子 child_count>0 父跳过子拍卖 2 项；C scanner interval=0.5s pick PENDING → ASSIGNED 2 项；D 已 ASSIGNED 再触发静默 1 项；E find_pending_leaves NOT IN 父集合 3 项；F scanner.start/stop 幂等 + interval=0 no-op 5 项）；临时脚本 `_p57_selfcheck.py` + cleanup SQL 验收后均已删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P5.6
 
 - 任务：P5.6 HITL 改派（POST /dispatch/reassign）

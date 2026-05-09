@@ -70,6 +70,40 @@ class TaskRepository:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def find_by_parent(self, parent_id: UUID) -> list[Task]:
+        """按 parent_id 查询子任务（P4.3 网格分解后的 tile 任务）。
+
+        排序：code ASC（T-YYYY-NNN-CC 后缀按字面顺序，便于稳定枚举）。
+        P5.7 自动触发拍卖在父任务有子任务时不拍父，转拍子任务列表。
+        """
+        stmt = select(Task).where(Task.parent_id == parent_id).order_by(Task.code.asc())
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def find_pending_leaves(self) -> list[Task]:
+        """返回所有「叶子级」PENDING 任务（即不是其他任务的父）。
+
+        语义：跳过被网格分解的父任务（其 area_km2 通常 > 1 km²，单机器人航程 R7
+        几乎必定 out_of_range）。这是 P5.7 PENDING 30s 扫描的主入口；与
+        `find_pending` 不同点仅在 NOT IN 过滤掉 parent_id 不为空的任务的父集合。
+        排序与 find_pending 一致：priority ASC + created_at ASC。
+        """
+        # 子任务父集合：所有 parent_id 不为空的 task 的 parent_id
+        parents_subq = (
+            select(Task.parent_id)
+            .where(Task.parent_id.isnot(None))
+            .distinct()
+            .subquery()
+        )
+        stmt = (
+            select(Task)
+            .where(
+                Task.status == "PENDING",
+                Task.id.notin_(select(parents_subq.c.parent_id)),
+            )
+            .order_by(Task.priority.asc(), Task.created_at.asc())
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
     async def find_paginated(
         self,
         *,

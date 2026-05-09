@@ -45,5 +45,12 @@ class Settings(BaseSettings):
     # 默认 0.0 关闭；答辩演示时调到 0.001（每 Agent 每 tick 0.1% 概率）
     mock_fault_inject_probability: float = 0.0
 
+    # Dispatch 自动化（P5.7）
+    # task.created 事件 → 自动触发 start_auction；PENDING 任务每 N 秒重扫一次。
+    # 默认开启；自检 / 不希望任务自动拍卖的场景可通过 .env 关掉，或把 interval 设为 0
+    # 来仅停 scanner（auto_trigger 仍会响应 task.created）。
+    dispatch_auto_trigger_enabled: bool = True
+    dispatch_pending_scan_interval_sec: float = 30.0
+
 
 settings = Settings()

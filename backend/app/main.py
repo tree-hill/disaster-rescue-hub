@@ -17,6 +17,10 @@ from app.core.config import settings
 from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
 from app.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
+from app.services.dispatch_trigger import (
+    get_pending_auction_scanner,
+    register_auto_trigger,
+)
 from app.ws import handlers as ws_handlers
 from app.ws.broadcaster import get_broadcaster
 from app.ws.event_bridge import register_ws_relays
@@ -34,13 +38,24 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     - 本地开发想看 Agent 跑：在 backend/.env 显式 MOCK_AGENTS_ENABLED=true
 
     顺序：
-    - startup：EventBus（注册 WS 转推 handler）→ AgentManager → PositionBroadcaster
-    - shutdown：先停 broadcaster（不再读 Agent），再停 AgentManager，最后停 EventBus
+    - startup：EventBus（注册 WS 转推 + 自动拍卖 trigger）→ PendingAuctionScanner
+      → AgentManager → PositionBroadcaster
+    - shutdown：先停 broadcaster（不再读 Agent）→ AgentManager → Scanner → EventBus
       （让 service 层晚发布的最后一波 task.* 事件能被 dispatch loop 消费完）
     """
     bus = get_event_bus()
     register_ws_relays(bus)
+    if settings.dispatch_auto_trigger_enabled:
+        register_auto_trigger(bus)
     await bus.start()
+    scanner = get_pending_auction_scanner(
+        interval_sec=settings.dispatch_pending_scan_interval_sec
+    )
+    if (
+        settings.dispatch_auto_trigger_enabled
+        and settings.dispatch_pending_scan_interval_sec > 0
+    ):
+        await scanner.start()
     if settings.mock_agents_enabled:
         await get_agent_manager().start_all()
         await get_broadcaster().start()
@@ -50,6 +65,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.mock_agents_enabled:
             await get_broadcaster().stop()
             await get_agent_manager().stop_all()
+        await scanner.stop()
         await bus.stop()
 
 

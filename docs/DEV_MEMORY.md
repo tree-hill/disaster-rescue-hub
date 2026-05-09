@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P5 调度算法**（P5.1~P5.6 已落地，拍卖闭环 + REST + HITL 改派对外）  
-当前任务：P5.7 任务自动触发拍卖（BUILD_ORDER §P5.7）  
-最近完成：P5.6 HITL 改派（`app/api/v1/dispatch.py` 追加 POST /dispatch/reassign（robot:reassign）；DispatchService.reassign_task BUSINESS_RULES §4.3.3 7 步：FOR UPDATE 锁 task → 状态校验仅 ASSIGNED/EXECUTING → 新机器人 _robot_to_eval_input + RuleEngine.check（fail_reason 入 details）→ before_state.algorithm_used 取自 active assignment 关联 auction.algorithm（无关联默认 MANUAL_OVERRIDE）→ release_active_for_task + 新 TaskAssignment(auction_id=NULL) → after_state(MANUAL_OVERRIDE) → 写 human_interventions(reassign) → commit → publish task.reassigned (commander 9 字段) + intervention.recorded (admin 6 字段)；schemas/dispatch.py 追加 ReassignRequest / ReassignResponse(task: TaskRead, intervention_id) + 前向引用 model_rebuild；event_bridge 加 task.reassigned commander 转推 + intervention.recorded admin 转推；任务状态字面保持不变（不调 transit_task）；38/38 自检全绿）（2026-05-09）  
-下一任务：P5.7 任务自动触发拍卖（监听 TaskCreatedEvent → 自动调用 start_auction + PENDING 30s 扫描重试，BUILD_ORDER §P5.7）  
+当前阶段：**P5 调度算法**（P5.1~P5.7 已落地，拍卖闭环 + REST + HITL 改派 + 自动触发）  
+当前任务：P5.8 跑通所有测试用例（BUILD_ORDER §P5.8）  
+最近完成：P5.7 任务自动触发拍卖（`backend/app/services/dispatch_trigger.py` 新增：`_try_start_auction`（独立 session 包 BusinessError 静默 404/409 竞态）+ `_on_task_created`（task.created handler，child_count>0 走 find_by_parent 逐子触发，==0 直接触发当前任务） + `register_auto_trigger(bus)` + `PendingAuctionScanner(interval_sec)`（asyncio.Event + wait_for(timeout) 优雅停 + 单例 get_pending_auction_scanner）；`app/repositories/task.py` 加 `find_by_parent` + `find_pending_leaves`（NOT IN 父集合，跳过被分解父任务）；`app/core/config.py` 加 dispatch_auto_trigger_enabled / dispatch_pending_scan_interval_sec（默认 True / 30.0）；`app/main.py` lifespan 串起 register_auto_trigger + scanner.start，shutdown 反序停；17/17 自检全绿）（2026-05-09）  
+下一任务：P5.8 跑通所有测试用例（ALGORITHM_TESTCASES.md TC-1~TC-10 + TC-E2E-1/2，BUILD_ORDER §P5.8）  
 
 > 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 
@@ -95,6 +95,39 @@
 ---
 
 ## 已完成任务
+
+### P5.7 — 任务自动触发拍卖（2026-05-09）
+
+- 任务：P5.7（BUILD_ORDER §P5.7）
+- 执行工具：Claude Code
+- 修改类型：feat（新增 dispatch_trigger 服务 + repo 扩展 + lifespan 接线 + 2 个 settings）
+- 涉及文件：
+  - `backend/app/services/dispatch_trigger.py`（新增）：`_try_start_auction(task_id)` + `_on_task_created(payload)` + `register_auto_trigger(bus)` + `PendingAuctionScanner(interval_sec)` + `get_pending_auction_scanner` 单例 + `reset_scanner_for_tests`
+  - `backend/app/repositories/task.py`（扩展）：`find_by_parent(parent_id)`（按 code ASC）+ `find_pending_leaves()`（NOT IN distinct(parent_id WHERE NOT NULL) 子查询，priority ASC + created_at ASC）
+  - `backend/app/core/config.py`（扩展）：`dispatch_auto_trigger_enabled: bool = True` + `dispatch_pending_scan_interval_sec: float = 30.0`（.env 可覆盖；测试场景设 0 禁 scanner，flag 设 False 禁全部）
+  - `backend/app/main.py`（修改）：lifespan startup `register_auto_trigger(bus)`（settings 控制） + scanner.start()；shutdown 反序停 scanner → bus
+- 关键设计：
+  - **每 task 一新 session**：`_try_start_auction` 内 `async with async_session_maker()`，与 HTTP 请求 session 完全隔离；DispatchService.start_auction 内部已 commit。共享 session 会卡 connection pool + 让循环里看到「已 commit 但本会话脏」的状态。
+  - **404/409 静默**：竞态期望情况（auto_trigger 与 scanner 抢同一任务、任务并发删除）一律 `logger.info` 不告警；只有真实异常（DB 断、算法库异常）走 `logger.exception`。这是后台协程的常见反模式：把可恢复竞态当 ERROR 会刷爆告警。
+  - **父任务跳过**：`task.created` payload 的 `child_count > 0` 时，`_on_task_created` 不拍父，调 `TaskRepository.find_by_parent(parent_id)` 拿子任务列表逐个触发。原因：被网格分解的父任务 area_km2 > 1 km²，单机器人航程几乎一定 R7 out_of_range，每 30s 把它扫一次只是浪费拍卖；`find_pending_leaves` 同步把这一类父过滤掉，scanner 与 auto_trigger 行为一致。
+  - **scanner 优雅停**：用 `asyncio.Event` + `wait_for(stop.wait(), timeout=interval)`，停止信号 1 个 tick 内响应；与 EventBus.stop 的哨兵风格、AgentManager.stop_all 的 `_stop` 风格统一。`interval_sec <= 0` 时 start() 是 no-op + log info（测试场景禁 scanner 用）。
+  - **lifespan 顺序**：startup `register_ws_relays → register_auto_trigger → bus.start → scanner.start → AgentManager`；shutdown 反序，让 service 层最后一波 `task.*` 事件能被 bus dispatcher 消费完才停 bus。先停 scanner 再停 bus 也避免 scanner 调 `_try_start_auction` 时 bus 已停（start_auction 内部会 publish 拍卖事件）。
+  - **配置而非硬编码 30s**：`dispatch_pending_scan_interval_sec` 默认 30.0（BUSINESS_RULES §3.4 字面），测试用 0.5；生产可按需调整，不需要改代码。
+- 测试验证：
+  - 17/17 自检全绿（临时脚本 `_p57_selfcheck.py`，验收后已删除）：
+    - A 单任务 4 项：publish task.created → 任务 8s 内变 ASSIGNED + auction 1 条 CLOSED winner 非空 + task_assignments active 1 条匹配 auction_id
+    - B 父+子 2 项：publish task.created child_count=2 → 至少 1 个子任务 ASSIGNED + 父保持 PENDING
+    - C scanner pick 2 项：scanner(interval=0.5s).start() → 注入 PENDING → 10s 内变 ASSIGNED + scanner.stop() 后 started=False
+    - D 静默 1 项：已 ASSIGNED 任务再调 `_try_start_auction` → 不抛
+    - E find_pending_leaves 3 项：父 + 子 + 独立 → leaves 含子 + 独立、不含父
+    - F lifecycle 5 项：start 后 started=True + 重复 start 不抛 + stop 后 started=False + 重复 stop 不抛 + interval=0 启动是 no-op
+- 环境补装：无。
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：
+  - P5.7 ✅；scanner 的 30s tick 在生产环境可能与监控系统页面刷新节奏不太对齐，前端拉 GET /dispatch/auctions 看不到 FAILED→新一轮 OPEN 的瞬时，但闭环 WS auction.* 事件已能补足。
+  - dispatch_trigger 单元测试目前依赖真实 DB；未来如要跑 CI 可改为 monkeypatch DispatchService.start_auction（脚本里实际就是这种思路，被验收后删除）。
+- 下一步建议：
+  - 进入 P5.8：把 ALGORITHM_TESTCASES.md TC-1~TC-10 + TC-E2E-1/2 落地为可重复跑的测试集；当前缺少 backend/tests 目录下的真测试（之前都是临时脚本验收后删除），P5.8 是「补回正式测试」的窗口。
 
 ### P5.6 — HITL 改派（2026-05-09）
 
