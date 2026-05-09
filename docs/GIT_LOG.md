@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：test: P5.8 algorithm test cases + dispatch e2e (TC-1..10 + TC-E2E-1/2)
-- Commit hash：(本任务 commit 后回填)
+- Commit hash：2fce42e
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
