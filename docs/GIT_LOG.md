@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P5.6 HITL reassign with full audit trail and dual-room WS broadcast
-- Commit hash：(本任务 commit 后回填)
+- Commit hash：18b8bd2
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
