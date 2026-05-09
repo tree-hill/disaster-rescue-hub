@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P6.2 fusion (weighted_average + resolve_conflict + fused_from audit)
-- Commit hash：（待回填）
+- Commit hash：7514cf7
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
