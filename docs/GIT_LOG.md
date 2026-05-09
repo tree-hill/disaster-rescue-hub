@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P5.7 auto-trigger auctions on task.created + PENDING scanner
-- Commit hash：(本任务 commit 后回填)
+- Commit hash：04b5338
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
