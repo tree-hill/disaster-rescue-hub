@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P7.1 situation backend (KPI 1Hz aggregator + alert engine 12 rules + REST/WS)
-- Commit hash：（commit 后回填）
+- Commit hash：4e671ab
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
