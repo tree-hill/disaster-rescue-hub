@@ -24,6 +24,31 @@
 
 ## 提交记录
 
+### 2026-05-10 — P7.2
+
+- 任务：P7.2 前端基础设施
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P7.2 frontend infra (auth/ws zustand stores + protected route + 6 page routes)
+- Commit hash：（commit 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - frontend/src/store/auth.ts（新增）：Zustand+persist(key='drh-auth')，AuthUser/accessToken/refreshToken+setSession/clear/hasPermission/hasAnyRole；selectIsAuthenticated 派生 selector
+  - frontend/src/store/ws.ts（新增）：Socket.IO 单例 store。connect 用 io({path,'/socket.io', transports:['websocket'], auth: cb=>cb({token: useAuthStore.accessToken}), reconnection: true, reconnectionAttempts=MAX_RECONNECT(5), delay 1s 起封顶 5s})；'connect' 事件后 emit 'subscribe' {rooms} 重订；'auth_error' 自动 clear+disconnect+跳/login；subscribe(...rooms)/unsubscribe(...rooms) 维护本地 rooms 状态；addListener<P>(name, handler) 返回 unsubscribe；WSEventName 联合类型 22 个事件
+  - frontend/src/components/common/ProtectedRoute.tsx（新增）：未登录→<Navigate to="/login" state={{from}}/>；无权限→<Navigate to="/cockpit"/>；permission 可选 prop
+  - frontend/src/router/index.tsx（修改）：7 路由 /→/cockpit、/login、受保护组(/cockpit /robots /tasks /blackboard /alerts)、admin 组(/admin permission=system:admin)、*→/cockpit
+  - frontend/src/pages/{Cockpit,RobotManagement,TaskManagement,Blackboard,AlertCenter,Admin}.tsx（新增）：6 个 P7.3 占位页
+  - frontend/src/api/client.ts（修改）：baseURL='/api/v1'(VITE_API_BASE_URL 可覆盖)；token 改从 useAuthStore.getState().accessToken 实时读；401→useAuthStore.clear()+跳/login(避循环)
+  - frontend/src/vite-env.d.ts（新增）：vite/client + ImportMetaEnv.VITE_API_BASE_URL（修复 tsc TS2339）
+  - frontend/package-lock.json（新增）：npm install 生成
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：P7.2 完成；下一任务 P7.3 6 大页面
+- 自检：`npx tsc --noEmit` exit=0；`npm run build` 通过 1.80s 57 modules dist/index.js 214.67 kB gzip 69.96 kB；后端 pytest 12/12 无回归（未变更）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P7.1
 
 - 任务：P7.1 态势感知后端
