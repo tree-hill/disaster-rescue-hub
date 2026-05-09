@@ -55,6 +55,20 @@ async def _relay_dispatch_algorithm_changed(payload: dict[str, Any]) -> None:
     await push_event("dispatch.algorithm_changed", payload, room="admin")
 
 
+async def _relay_task_reassigned(payload: dict[str, Any]) -> None:
+    """HITL 改派业务事件 → commander 房间（WS_EVENTS §4）。"""
+    await push_event("task.reassigned", payload, room="commander")
+
+
+async def _relay_intervention_recorded(payload: dict[str, Any]) -> None:
+    """HITL 通用审计事件 → admin 房间（WS_EVENTS §8）。
+
+    与 task.reassigned / robot.recall_initiated 等业务事件并发触发；区别在于
+    本事件只发 admin 审计页，业务面板（commander）订阅业务事件。
+    """
+    await push_event("intervention.recorded", payload, room="admin")
+
+
 def register_ws_relays(bus: EventBus) -> None:
     """订阅本任务范围内的 WS 转推 handler。subscribe 自带去重，幂等。"""
     bus.subscribe("task.created", _relay_task_created)
@@ -66,3 +80,6 @@ def register_ws_relays(bus: EventBus) -> None:
     bus.subscribe("auction.failed", _relay_auction_failed)
     # P5.5 HITL 算法切换（commander + admin 两房间）
     bus.subscribe("dispatch.algorithm_changed", _relay_dispatch_algorithm_changed)
+    # P5.6 HITL 改派（commander 业务 + admin 审计）
+    bus.subscribe("task.reassigned", _relay_task_reassigned)
+    bus.subscribe("intervention.recorded", _relay_intervention_recorded)

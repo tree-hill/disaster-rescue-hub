@@ -38,6 +38,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.event_bus import get_event_bus
@@ -83,6 +84,8 @@ EVT_AUCTION_BID_SUBMITTED = "auction.bid_submitted"
 EVT_AUCTION_COMPLETED = "auction.completed"
 EVT_AUCTION_FAILED = "auction.failed"
 EVT_DISPATCH_ALGORITHM_CHANGED = "dispatch.algorithm_changed"
+EVT_TASK_REASSIGNED = "task.reassigned"
+EVT_INTERVENTION_RECORDED = "intervention.recorded"
 
 # === 默认兜底（无最新 robot_state 时使用）===
 # 与 seed.py / RobotAgent 启动初值一致，避免规则引擎对稀疏数据返回错误结果。
@@ -627,6 +630,215 @@ class DispatchService:
             raise _auction_not_found(auction_id)
         bids = await self.bids.find_by_auction(auction_id)
         return auction, bids
+
+    # ---------- P5.6 HITL 改派 ----------
+
+    async def reassign_task(
+        self,
+        *,
+        task_id: UUID,
+        new_robot_id: UUID,
+        user_id: UUID,
+        reason: str,
+    ) -> tuple[Task, UUID]:
+        """POST /dispatch/reassign：HITL 改派任务到新机器人（BUSINESS_RULES §4.3.3）。
+
+        7 步严格对照 §4.3.3 伪代码：
+          1. 加锁（行级 FOR UPDATE on tasks，事务结束自动释放）
+          2. 任务状态校验（仅 ASSIGNED / EXECUTING 可改派）
+          3. 新机器人存在性 + RuleEngine.check（合并 robots/最新 state/active 计数）
+          4. before_state（assigned_robot_ids 取自当前 active assignments；
+             algorithm_used 取自 active assignment 关联的 auction.algorithm，
+             无关联则用 'MANUAL_OVERRIDE'，与 after_state 区分）
+          5. 释放原 active assignments（is_active=FALSE, released_at=NOW）+
+             创建新 TaskAssignment(auction_id=NULL，人工指派标记)
+          6. after_state（assigned_robot_ids=[new_robot_id], algorithm_used=
+             'MANUAL_OVERRIDE'）
+          7. 写 human_interventions(intervention_type='reassign')，同事务 commit
+          8. commit 后 publish task.reassigned (commander) + intervention.recorded
+             (admin)；publish 失败仅日志，不影响 HTTP 响应
+
+        关键约束：
+        - reason ≥5 非空白字符 → 422_INTERVENTION_REASON_INVALID_001
+        - 任务不存在 → 404_TASK_NOT_FOUND_001
+        - 任务非 ASSIGNED/EXECUTING → 409_TASK_STATUS_CONFLICT_001
+        - 新机器人不存在 → 404_ROBOT_NOT_FOUND_001
+        - 新机器人 RuleEngine 不合格 → 409_ROBOT_INELIGIBLE_001（含 fail_reason）
+
+        注意：本服务不修改 task.status —— ASSIGNED→ASSIGNED / EXECUTING→EXECUTING
+        都属于「同状态改派」，状态机只校验「from→to」转移；这里不调 transit
+        （TASK_TRANSITIONS[ASSIGNED] 不含 ASSIGNED 自循环；EXECUTING 含
+        EXECUTING 自循环但仅在「无缝切换」语义下使用，本任务保留状态字面不变
+        即可）。
+
+        返回 (task, intervention_id) 供 API 层组装 ReassignResponse。
+        """
+        _validate_reason(reason)
+
+        # === 1) 加锁：FOR UPDATE on tasks 行，避免并发改派（pseudo-code §4.3.3 步 1）
+        # session.get 不支持 FOR UPDATE，用 select(...).with_for_update()
+        stmt = select(Task).where(Task.id == task_id).with_for_update()
+        task = (await self.session.execute(stmt)).scalar_one_or_none()
+        if task is None:
+            raise _task_not_found(task_id)
+
+        # === 2) 任务状态校验
+        if task.status not in {"ASSIGNED", "EXECUTING"}:
+            raise BusinessError(
+                code="409_TASK_STATUS_CONFLICT_001",
+                message=f"任务状态 {task.status} 不允许改派（仅 ASSIGNED/EXECUTING 可改派）",
+                http_status=409,
+                details=[
+                    {
+                        "field": "task.status",
+                        "code": "current_status",
+                        "message": task.status,
+                    },
+                    {
+                        "field": "task.status",
+                        "code": "expected_status",
+                        "message": "ASSIGNED|EXECUTING",
+                    },
+                ],
+            )
+
+        # === 3) 新机器人存在 + RuleEngine 合格性
+        new_robot = await self.robots.find_by_id(new_robot_id)
+        if new_robot is None:
+            raise BusinessError(
+                code="404_ROBOT_NOT_FOUND_001",
+                message="目标机器人不存在",
+                http_status=404,
+                details=[
+                    {
+                        "field": "new_robot_id",
+                        "code": "not_found",
+                        "message": str(new_robot_id),
+                    }
+                ],
+            )
+
+        latest_state = await self.robot_states.find_latest_by_robot(new_robot.id)
+        active_counts = await self.assignments.count_active_by_robot_bulk(
+            [new_robot.id]
+        )
+        new_view = _robot_to_eval_input(
+            new_robot, latest_state, active_counts.get(new_robot.id, 0)
+        )
+        task_view = _task_to_eval_input(task)
+        ok, fail_reason = self._engine.check(new_view, task_view)
+        if not ok:
+            raise BusinessError(
+                code="409_ROBOT_INELIGIBLE_001",
+                message=f"目标机器人不合格：{fail_reason}",
+                http_status=409,
+                details=[
+                    {
+                        "field": "new_robot_id",
+                        "code": "rule_engine_reject",
+                        "message": fail_reason,
+                    }
+                ],
+            )
+
+        # === 4) before_state（DATA_CONTRACTS §4.8）
+        old_assignments = await self.assignments.find_by_task(
+            task_id, only_active=True
+        )
+        # algorithm_used：取最近一条 active assignment 关联的 auction.algorithm；
+        # 若无 active 或 auction_id=None（之前已是人工指派）→ MANUAL_OVERRIDE。
+        algorithm_used = "MANUAL_OVERRIDE"
+        for a in old_assignments:
+            if a.auction_id is not None:
+                auc = await self.auctions.find_by_id(a.auction_id)
+                if auc is not None:
+                    algorithm_used = str(auc.algorithm)
+                    break
+
+        before_robot_ids = [str(a.robot_id) for a in old_assignments]
+        before_state: dict[str, Any] = {
+            "task_id": str(task.id),
+            "task_code": task.code,
+            "assigned_robot_ids": before_robot_ids,
+            "algorithm_used": algorithm_used,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # === 5) 释放原 active assignments + 创建新 TaskAssignment（auction_id=None）
+        now = datetime.now(timezone.utc)
+        await self.assignments.release_active_for_task(task_id, released_at=now)
+        new_assignment = TaskAssignment(
+            task_id=task.id,
+            robot_id=new_robot.id,
+            auction_id=None,  # 人工指派，无拍卖关联
+            is_active=True,
+        )
+        await self.assignments.save(new_assignment)
+
+        # === 6) after_state
+        after_state: dict[str, Any] = {
+            "task_id": str(task.id),
+            "task_code": task.code,
+            "assigned_robot_ids": [str(new_robot.id)],
+            "algorithm_used": "MANUAL_OVERRIDE",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # === 7) 写 human_interventions（同事务）
+        intervention = HumanIntervention(
+            user_id=user_id,
+            intervention_type="reassign",
+            target_task_id=task.id,
+            target_robot_id=new_robot.id,
+            before_state=before_state,
+            after_state=after_state,
+            reason=reason,
+        )
+        await self.interventions.save(intervention)
+
+        await self.session.commit()
+        await self.session.refresh(task)
+        await self.session.refresh(intervention)
+
+        # === 8) 事务外推送 WS 事件（commit 之后；publish 失败仅日志）
+        # task.reassigned → commander：from_robot 取释放前第一条 active；多机协同时
+        # 仍只挑一条便于前端展示，audit 完整链路看 intervention.before_state。
+        from_robot_id: UUID | None = (
+            old_assignments[0].robot_id if old_assignments else None
+        )
+        from_robot_code: str | None = None
+        if from_robot_id is not None:
+            from_robot = await self.robots.find_by_id(from_robot_id)
+            from_robot_code = from_robot.code if from_robot is not None else None
+
+        await self._publish(
+            EVT_TASK_REASSIGNED,
+            {
+                "task_id": str(task.id),
+                "task_code": task.code,
+                "from_robot_id": str(from_robot_id) if from_robot_id else None,
+                "from_robot_code": from_robot_code,
+                "to_robot_id": str(new_robot.id),
+                "to_robot_code": new_robot.code,
+                "reassigned_by_user_id": str(user_id),
+                "reason": reason,
+                "intervention_id": str(intervention.id),
+            },
+        )
+        # intervention.recorded → admin（WS_EVENTS §8 审计事件）
+        await self._publish(
+            EVT_INTERVENTION_RECORDED,
+            {
+                "intervention_id": str(intervention.id),
+                "user_id": str(user_id),
+                "intervention_type": "reassign",
+                "target_task_id": str(task.id),
+                "target_robot_id": str(new_robot.id),
+                "reason": reason,
+            },
+        )
+
+        return task, intervention.id
 
     # ---------- P5.5 HITL 算法切换 ----------
 

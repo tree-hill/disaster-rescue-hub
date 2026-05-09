@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P5 调度算法**（P5.1~P5.5 已落地，拍卖闭环 + REST 接口对外）  
-当前任务：P5.6 HITL 改派（BUILD_ORDER §P5.6）  
-最近完成：P5.5 拍卖 REST 接口（`app/api/v1/dispatch.py` 5 路由：POST /dispatch/auction（task:create）+ GET /dispatch/algorithm（task:read）+ POST /dispatch/algorithm（algorithm:switch HITL，写 human_interventions + 发 dispatch.algorithm_changed → commander+admin 两房间）+ GET /dispatch/auctions（分页 + task_id/algorithm/start_time/end_time 过滤）+ GET /dispatch/auctions/{id}（含 bids 按 bid_value DESC）；schemas/dispatch.py 追加 AuctionRead / BidRead / AuctionTriggerRequest / AlgorithmSwitchRequest / AlgorithmSwitchResponse / AlgorithmInfoResponse + AlgorithmName Literal；AuctionRepository.find_paginated + BidRepository.find_by_auction；DispatchService 追加 list_auctions / get_auction_with_bids / switch_algorithm（HITL 同事务，commit 失败回滚全局算法）；event_bridge 加 dispatch.algorithm_changed → 双房间转推；77/77 自检全绿）（2026-05-09）  
-下一任务：P5.6 HITL 改派（POST /dispatch/reassign，BUSINESS_RULES §4.3.3 7 步：加锁 → 任务状态校验 → RuleEngine.check 新机器人 → before_state → 释放原 assignment + 创建新 → after_state → 写 intervention → WS 双事件）  
+当前阶段：**P5 调度算法**（P5.1~P5.6 已落地，拍卖闭环 + REST + HITL 改派对外）  
+当前任务：P5.7 任务自动触发拍卖（BUILD_ORDER §P5.7）  
+最近完成：P5.6 HITL 改派（`app/api/v1/dispatch.py` 追加 POST /dispatch/reassign（robot:reassign）；DispatchService.reassign_task BUSINESS_RULES §4.3.3 7 步：FOR UPDATE 锁 task → 状态校验仅 ASSIGNED/EXECUTING → 新机器人 _robot_to_eval_input + RuleEngine.check（fail_reason 入 details）→ before_state.algorithm_used 取自 active assignment 关联 auction.algorithm（无关联默认 MANUAL_OVERRIDE）→ release_active_for_task + 新 TaskAssignment(auction_id=NULL) → after_state(MANUAL_OVERRIDE) → 写 human_interventions(reassign) → commit → publish task.reassigned (commander 9 字段) + intervention.recorded (admin 6 字段)；schemas/dispatch.py 追加 ReassignRequest / ReassignResponse(task: TaskRead, intervention_id) + 前向引用 model_rebuild；event_bridge 加 task.reassigned commander 转推 + intervention.recorded admin 转推；任务状态字面保持不变（不调 transit_task）；38/38 自检全绿）（2026-05-09）  
+下一任务：P5.7 任务自动触发拍卖（监听 TaskCreatedEvent → 自动调用 start_auction + PENDING 30s 扫描重试，BUILD_ORDER §P5.7）  
 
 > 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 
@@ -95,6 +95,42 @@
 ---
 
 ## 已完成任务
+
+### P5.6 — HITL 改派（2026-05-09）
+
+- 任务：P5.6（BUILD_ORDER §P5.6）
+- 执行工具：Claude Code
+- 修改类型：feat（POST /dispatch/reassign + DispatchService.reassign_task + WS 双事件转推）
+- 涉及文件：
+  - `backend/app/api/v1/dispatch.py`（修改）：追加 POST /dispatch/reassign 路由（robot:reassign 守卫，调 DispatchService.reassign_task；返回 ReassignResponse(task, intervention_id)）
+  - `backend/app/schemas/dispatch.py`（扩展）：ReassignRequest（task_id / new_robot_id / reason 仅 max_length，min_length 业务层抛特化错误码）+ ReassignResponse(task: TaskRead, intervention_id)；前向引用末尾 `from app.schemas.task import TaskRead` + `model_rebuild()`
+  - `backend/app/services/dispatch_service.py`（扩展）：reassign_task 严格 7 步；新增事件常量 `EVT_TASK_REASSIGNED` / `EVT_INTERVENTION_RECORDED`；导入 `from sqlalchemy import select` 用于 `with_for_update()` 行锁
+  - `backend/app/ws/event_bridge.py`（修改）：追加 `_relay_task_reassigned`（commander）+ `_relay_intervention_recorded`（admin）+ register_ws_relays 订阅
+- 关键设计：
+  - **加锁用 SQLAlchemy `select(Task).with_for_update()`**：行级锁随事务结束自动释放，无须像任务码生成那样用 advisory_xact_lock。pseudo-code §4.3.3 写「行级或 Redis 锁」，行级最贴本项目栈。
+  - **任务状态校验仅放行 ASSIGNED / EXECUTING**：BUSINESS_RULES §4.3.3 字面，不调 task_status_machine.transit —— 改派后任务状态字面保持不变（ASSIGNED→ASSIGNED 不在 TASK_TRANSITIONS，EXECUTING→EXECUTING 仅「无缝切换」语义；这里不需要副作用，仅换 assignment）。
+  - **新机器人 RuleEngine.check 复用 P5.4 路径**：构造 `_robot_to_eval_input(robot, latest_state, active_count)` —— 同一套 fsm/battery/position/active_count 注入；不合格抛 `409_ROBOT_INELIGIBLE_001` 并把 `fail_reason`（inactive/not_idle/low_battery/wrong_type/...）放进 `details[].message`，前端可直接展示为什么被拒。
+  - **before_state.algorithm_used 取自 active assignment 关联 auction.algorithm**：循环 active 找第一条非空 `auction_id`，查 auction 取 algorithm；若无（多机协同里全是人工指派）→ 默认 `MANUAL_OVERRIDE`。after_state 永远是 `MANUAL_OVERRIDE`（人工改派的字面定义）。
+  - **释放原 + 创建新同事务**：调 `release_active_for_task(released_at=NOW)`（批量 update is_active=False + released_at；多机协同时一并释放）+ 新 `TaskAssignment(auction_id=None)` 标记人工指派；intervention 同事务 commit。
+  - **WS 双事件 commit 后才 publish**：避免「写库失败但 WS 已发幻觉」与 P4.5 / P5.4 / P5.5 同款；`task.reassigned` payload 9 字段含 from_robot_*/to_robot_*/reassigned_by_user_id/reason/intervention_id（多机协同取第一条 active 作 from_robot 展示，完整链路看 intervention.before_state.assigned_robot_ids）；`intervention.recorded` payload 6 字段对照 WS_EVENTS §8 严格。
+  - **错误码层级**：reason → `422_INTERVENTION_REASON_INVALID_001`（特化于 422_VALIDATION_FAILED_001）；任务找不到 → `404_TASK_NOT_FOUND_001`；机器人找不到 → `404_ROBOT_NOT_FOUND_001`；状态非 ASSIGNED/EXECUTING → `409_TASK_STATUS_CONFLICT_001`（details 含 current/expected_status）；RuleEngine 拒 → `409_ROBOT_INELIGIBLE_001`（details 含 rule_engine_reject + 字面原因）；权限 → `403_AUTH_PERMISSION_DENIED_001`。
+- 测试验证：
+  - 38/38 自检全绿（临时脚本 `_p56_selfcheck.py`，验收后已删除；真实 DB + httpx ASGITransport + monkeypatch event_bus 捕获事件 + cleanup SQL 清场）：
+    - A happy path 19 项：HTTP 200 + task.id/status/intervention_id + WS 2 事件序列 + task.reassigned 9 字段 + from/to robot_id/code 校验 + intervention.recorded 6 字段 + intervention_type=='reassign' + DB 原 assignment is_active=False/released_at + 新 assignment is_active=True/auction_id IS NULL + intervention 1 条 + before/after_state.algorithm_used 取值 + assigned_robot_ids 切换 + target_robot_id + reason 落库
+    - B 权限 3 项：observer 403 + code + 无 token 401
+    - C reason 校验 2 项：HTTP 422 + 422_INTERVENTION_REASON_INVALID_001
+    - D 任务不存在 2 项：HTTP 404 + 404_TASK_NOT_FOUND_001
+    - E 机器人不存在 2 项：HTTP 404 + 404_ROBOT_NOT_FOUND_001
+    - F 状态冲突 3 项：PENDING 409 + code + CANCELLED 409
+    - G 不合格机器人 5 项：is_active=FALSE 409 + 409_ROBOT_INELIGIBLE_001 + details.fail_reason='inactive' + 低电量 409 + details.fail_reason='low_battery'
+    - H EXECUTING 改派 2 项：HTTP 200 + task.status 仍为 EXECUTING
+- 环境补装：无。
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：
+  - BUILD_ORDER §P5.6 ✅；reassign 范围内的「多机协同选哪个 from_robot」当前取 `old_assignments[0]`，从前端展示足够；完整审计在 intervention.before_state.assigned_robot_ids 里。
+  - intervention.recorded 目前只对 reassign 发；recall / cancel_task / algorithm_switch 是否回填到 admin 房间留 P5.7 之后统一治理（最小变更原则，不在 P5.6 越界）。
+- 下一步建议：
+  - 进入 P5.7：监听 EventBus 上的 task.created → 自动 `DispatchService.start_auction(task_id)`；后台协程每 30s 扫 PENDING 重试（避免初次拍卖 no_eligible 的任务永远悬挂）。
 
 ### P5.5 — 拍卖 REST 接口（2026-05-09）
 

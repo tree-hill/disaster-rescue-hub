@@ -33,8 +33,11 @@ from app.schemas.dispatch import (
     AuctionRead,
     AuctionTriggerRequest,
     BidRead,
+    ReassignRequest,
+    ReassignResponse,
 )
 from app.schemas.pagination import Page
+from app.schemas.task import TaskRead
 from app.services.dispatch_service import DispatchService, get_dispatch_settings
 
 router = APIRouter(prefix="/dispatch", tags=["dispatch"])
@@ -165,6 +168,46 @@ async def get_auction(
     """GET /dispatch/auctions/{id}：含全部出价（bid_value DESC 排序）。"""
     auction, bids = await DispatchService(db).get_auction_with_bids(auction_id)
     return _to_auction_read(auction, bids)
+
+
+# ---------- HITL 改派（POST /dispatch/reassign，P5.6） ----------
+
+
+@router.post(
+    "/reassign",
+    response_model=ReassignResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def reassign_task(
+    payload: ReassignRequest,
+    current: CurrentUser = Depends(require_permission("robot:reassign")),
+    db: AsyncSession = Depends(get_db),
+) -> ReassignResponse:
+    """HITL 改派任务到新机器人。对照 API_SPEC §4 + BUSINESS_RULES §4.3.3。
+
+    错误码：
+    - 422_INTERVENTION_REASON_INVALID_001（reason < 5 非空白字符）
+    - 404_TASK_NOT_FOUND_001
+    - 404_ROBOT_NOT_FOUND_001
+    - 409_TASK_STATUS_CONFLICT_001（任务非 ASSIGNED/EXECUTING）
+    - 409_ROBOT_INELIGIBLE_001（新机器人 RuleEngine 不合格，details 含 fail_reason）
+    - 403_AUTH_PERMISSION_DENIED_001（缺 robot:reassign）
+
+    成功副作用（同事务）：FOR UPDATE 锁 task → 释放原 active assignment + 创建新
+    TaskAssignment(auction_id=NULL) + 写 human_interventions(intervention_type=
+    'reassign')；commit 后广播 task.reassigned (commander) + intervention.recorded
+    (admin)。任务状态字面保持不变（ASSIGNED→ASSIGNED 或 EXECUTING→EXECUTING）。
+    """
+    task, intervention_id = await DispatchService(db).reassign_task(
+        task_id=payload.task_id,
+        new_robot_id=payload.new_robot_id,
+        user_id=current.id,
+        reason=payload.reason,
+    )
+    return ReassignResponse(
+        task=TaskRead.model_validate(task),
+        intervention_id=intervention_id,
+    )
 
 
 # ---------- 助手 ----------

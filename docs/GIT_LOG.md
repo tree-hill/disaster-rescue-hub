@@ -24,6 +24,27 @@
 
 ## 提交记录
 
+### 2026-05-09 — P5.6
+
+- 任务：P5.6 HITL 改派（POST /dispatch/reassign）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P5.6 HITL reassign with full audit trail and dual-room WS broadcast
+- Commit hash：(本任务 commit 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/api/v1/dispatch.py（修改）：追加 POST /dispatch/reassign 路由（require_permission("robot:reassign")，调 DispatchService.reassign_task；返回 ReassignResponse(task: TaskRead, intervention_id)）；docstring 列错误码 + 副作用
+  - backend/app/schemas/dispatch.py（扩展）：ReassignRequest（task_id / new_robot_id / reason max_length=500，min_length 业务层抛特化错误码）+ ReassignResponse(task: "TaskRead", intervention_id)；模块底部 `from app.schemas.task import TaskRead` + `ReassignResponse.model_rebuild()` 解决前向引用
+  - backend/app/services/dispatch_service.py（扩展）：`reassign_task` 严格 BUSINESS_RULES §4.3.3 7 步：select(Task).with_for_update() 行锁 → 任务状态校验仅 ASSIGNED/EXECUTING（其他抛 409_TASK_STATUS_CONFLICT_001 details 含 expected_status='ASSIGNED|EXECUTING'）→ 新机器人 find_by_id（404_ROBOT_NOT_FOUND_001）+ _robot_to_eval_input(robot, latest_state, active_count) + RuleEngine.check（不合格 409_ROBOT_INELIGIBLE_001，details.code='rule_engine_reject' details.message=fail_reason）→ before_state.algorithm_used 循环 active assignment 取首个非空 auction_id 关联 auction.algorithm（默认 MANUAL_OVERRIDE）+ assigned_robot_ids=[old_robot_id]+task_code → release_active_for_task(released_at=NOW) + 新 TaskAssignment(auction_id=NULL, is_active=True) → after_state.algorithm_used='MANUAL_OVERRIDE' assigned_robot_ids=[new_robot_id] → 同事务写 human_interventions(intervention_type='reassign', target_task_id, target_robot_id=new) → commit + refresh → publish EVT_TASK_REASSIGNED commander 9 字段（含 from/to robot_id/code，多机协同 from 取 old_assignments[0]）+ EVT_INTERVENTION_RECORDED admin 6 字段；任务状态字面保持不变（不调 transit_task）；新增事件常量 EVT_TASK_REASSIGNED / EVT_INTERVENTION_RECORDED；imports 加 `from sqlalchemy import select`
+  - backend/app/ws/event_bridge.py（修改）：`_relay_task_reassigned`（commander，业务面板）+ `_relay_intervention_recorded`（admin，审计页）+ register_ws_relays 订阅
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P5.6 完成记录；当前阶段更新到「P5.1~P5.6 已完成，下一任务 P5.7」
+- 自检：38/38 全绿（A happy 19：HTTP 200 + task/intervention_id + WS 2 事件序列 + task.reassigned 9 字段 + from/to robot_id/code + intervention.recorded 6 字段 + DB 原 assignment is_active=False/released_at + 新 assignment is_active=True/auction_id IS NULL + intervention 1 条 + before/after_state.algorithm_used 取值 + assigned_robot_ids 切换 + target_robot_id + reason 落库；B 权限 3：observer 403 + 无 token 401；C reason 2：422_INTERVENTION_REASON_INVALID_001；D 任务 404 2：404_TASK_NOT_FOUND_001；E 机器人 404 2：404_ROBOT_NOT_FOUND_001；F 状态 3：PENDING/CANCELLED 409_TASK_STATUS_CONFLICT_001；G 不合格 5：is_active=FALSE 409_ROBOT_INELIGIBLE_001 + details.fail_reason='inactive' + 低电量 'low_battery'；H EXECUTING 2：HTTP 200 + task.status='EXECUTING'）；临时脚本 `_p56_selfcheck.py` + DB cleanup SQL 验证后均已删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P5.5
 
 - 任务：P5.5 拍卖 REST 接口（5 路由 + HITL 算法切换）

@@ -136,3 +136,37 @@ class AuctionRead(BaseModel):
     winner_robot_id: UUID | None = None
     decision_latency_ms: int | None = None
     bids: list[BidRead] = []
+
+
+# === HITL 改派（P5.6） ====================================================
+
+
+class ReassignRequest(BaseModel):
+    """POST /dispatch/reassign 请求体。对照 DATA_CONTRACTS §5 ReassignRequest +
+    API_SPEC §4 + BUSINESS_RULES §4.3.3。
+
+    reason min_length 业务校验由 service 层统一抛 422_INTERVENTION_REASON_INVALID_001
+    （与 cancel_task / recall / algorithm_switch 同款），此处仅 max_length 拦截。
+    """
+
+    task_id: UUID
+    new_robot_id: UUID
+    reason: str = Field(..., max_length=500)
+
+
+class ReassignResponse(BaseModel):
+    """POST /dispatch/reassign 响应。
+
+    API_SPEC §4 写「`{task: TaskRead, intervention_id: UUID}`」。这里直接引用
+    TaskRead；为避免循环 import，用 lazy 字符串注解 + model_rebuild 在模块底部装配。
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    task: "TaskRead"
+    intervention_id: UUID
+
+
+from app.schemas.task import TaskRead  # noqa: E402  解决 ReassignResponse 前向引用
+
+ReassignResponse.model_rebuild()
