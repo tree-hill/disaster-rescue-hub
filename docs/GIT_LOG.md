@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P6.1 blackboard infrastructure (in-mem + async DB + TTL cleanup)
-- Commit hash：（待回填）
+- Commit hash：4b5d3e8
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
