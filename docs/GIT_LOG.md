@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P6.3 blackboard REST (entries / stats) + WS blackboard.updated relay
-- Commit hash：（待回填）
+- Commit hash：49338b6
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
