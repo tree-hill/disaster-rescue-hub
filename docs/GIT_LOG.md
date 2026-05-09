@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P7.2 frontend infra (auth/ws zustand stores + protected route + 6 page routes)
-- Commit hash：（commit 后回填）
+- Commit hash：fdba4bf
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
