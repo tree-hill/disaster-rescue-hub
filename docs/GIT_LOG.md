@@ -24,6 +24,28 @@
 
 ## 提交记录
 
+### 2026-05-10 — P7.4 改派弹窗
+
+- 任务：P7.4 改派弹窗（HITL）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P7.4 ReassignDialog (HITL) wired to /dispatch/reassign
+- Commit hash：（commit 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - frontend/src/api/dispatch.ts（新增）：reassignTask + ReassignRequest/ReassignResponse 类型
+  - frontend/src/api/tasks.ts（修改）：加 listTaskAssignments + TaskAssignmentRead
+  - frontend/src/components/common/ReassignDialog.tsx（新增）：完整对照 prototype_02——蒙层 backdrop-blur + 880px elevated 弹窗 + Header 橙渐变 + 任务信息 4 列卡 + 1fr auto 1fr 对比区（左当前分配 / 中央 ArrowRight 含 pulse 动画 / 右候选列表启发式 score = battery×0.6 + (1-distKm/10)×0.4 排序，单选 radio）+ 干预原因 textarea ≥5 字符校验 + 审计提示 footer + 确认按钮 → POST /dispatch/reassign
+  - frontend/src/pages/TaskManagement.tsx（修改）：TaskCard 加 onReassign prop 替换 alert 占位；挂载 ReassignDialog 跟踪 reassignTarget
+  - frontend/src/pages/Cockpit.tsx（修改）：TaskCardReal 加 onReassign prop + 改派按钮（仅 EXECUTING/ASSIGNED）；挂载 ReassignDialog
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：P7.4 完成，下一任务 P8
+- 自检：`npx tsc --noEmit` exit=0；Vite HMR 已热更，可在 /tasks 任意 EXECUTING/ASSIGNED 任务卡测试
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-10 — P7.3 阶段 B + 环境修正
 
 - 任务：P7.3 阶段 B —— 实装 RobotManagement / TaskManagement / Blackboard / Admin + Cockpit 联通真实数据 + Vite 端口绕过 Windows Hyper-V 保留段

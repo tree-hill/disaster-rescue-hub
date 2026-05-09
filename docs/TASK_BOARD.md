@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P7 态势感知 + 前端原型（P7.1 + P7.2 + P7.3 全 7 页完成）  
-当前任务：P7.4 改派弹窗（BUILD_ORDER §P7.4，对照 prototype_02_reassign_dialog.html）  
+当前阶段：P7 态势感知 + 前端原型（P7.1~P7.4 全部完成）  
+当前任务：P8 实验复盘 + 论文素材（BUILD_ORDER §P8）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P7.3 完结：Login + Cockpit + RobotManagement + TaskManagement + Blackboard + AlertCenter + Admin 7 页全部实装并接入后端；统一以 01-06 (#3B82F6 蓝 + Inter + 7 项菜单) 为设计基准。  
+备注：P7.4 改派弹窗完成：ReassignDialog 组件接 GET /tasks/{id}/assignments + GET /robots + POST /dispatch/reassign，从 Cockpit 任务卡和 TaskManagement 任务卡触发。  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P7.4 改派弹窗（BUILD_ORDER §P7.4，对照 prototype_02_reassign_dialog.html）：从 Cockpit 任务卡 / TaskManagement 任务卡 / AlertCenter 派遣灭火按钮触发，调 POST /dispatch/reassign
+- [ ] P8 实验复盘 + 论文素材（BUILD_ORDER §P8）：实验运行器、复盘页、对照实验、论文图表导出
 
 ### Deferred（用户独立完成）
 
@@ -56,6 +56,8 @@
 暂无。
 
 ### Done
+
+- [x] P7.4 改派弹窗（HITL）：`frontend/src/api/dispatch.ts` reassignTask + ReassignRequest/ReassignResponse；`frontend/src/api/tasks.ts` 加 listTaskAssignments + TaskAssignmentRead；`frontend/src/components/common/ReassignDialog.tsx` 完整对照 prototype_02：①蒙层 fixed inset-0 + backdrop-blur 6px ②880px 弹窗 elevated bg + 1px border-default ③Header 橙渐变 + Replace 图标 + HITL badge + 关闭按钮 ④任务信息卡 4 列（编号/类型+priority badge/进度+状态/中心点）⑤grid 1fr auto 1fr 对比区：左当前分配（接 GET /tasks/{id}/assignments find is_active → GET /robots/{id} 拿 latest_state，显示 code/fsm badge/电量/能力数/位置；任务 PENDING 时显示「未绑定机器人」），中央 ArrowRight 含 reassign-arrow-pulse 动画，右候选机器人（GET /robots filter is_active && fsm IN IDLE/RETURNING，启发式评分 = battery×0.6 + (1 - distKm/10)×0.4，按 score DESC 排，单选 radio + 选中橙渐变高亮，低电量 <30% opacity 0.7）⑥干预原因 textarea（focus 橙边框，require ≥5 字符）⑦Footer 审计提示 + 取消/确认按钮（btn-warning glow shadow）⑧确认提交 POST /dispatch/reassign → onSuccess refresh；TaskManagement 任务卡「改派」onClick 替换为 setReassignTarget(t)；Cockpit TaskCardReal 同样接入（仅 EXECUTING/ASSIGNED 显示按钮）；提交成功后 onSuccess 回调刷新任务列表；错误处理后端 422_INTERVENTION_REASON_INVALID/404/409_ROBOT_INELIGIBLE 提示。`npx tsc --noEmit` exit=0；vite HMR 直接热更（2026-05-10，Claude Code）
 
 - [x] P7.3 阶段 B：剩余 4 页面 + Cockpit/Login 联通 + Vite 端口修正：(1) `frontend/src/api/{robots,tasks,blackboard}.ts` 三个 API 客户端 + 完整类型；(2) RobotManagement 实装：5 统计卡（总数/UAV/UGV/USV/故障）+ 工具栏（search+type 过滤+清空+刷新）+ 主表格 8 列（编号/名称/类型/型号/能力/状态/电量/操作）行级点选 → 右侧 380px 详情面板（基础信息/位置任务/能力清单 + 编辑/紧急召回 grid-2 操作），分页 ‹ N ›，召回流程 prompt 原因→POST /robots/{id}/recall→刷新；(3) TaskManagement 实装：5 Tab（全部/待分配/执行中/完成/失败取消）+ 任务卡列表 borderLeft 按 priority 上色（高红/中橙/低绿）+ 进度条 + 改派/取消/详情按钮，右侧 460px 创建表单（任务名/4 类型 radio/3 优先级 radio/圆心+半径目标区域→自动算 area_km2/能力多选 chips）→POST /tasks 触发 P5.7 自动拍卖；WS task.created/cancelled/reassigned/auction.completed 自动 refresh；取消流程 prompt 原因→POST /tasks/{id}/cancel；(4) Blackboard 实装：5 统计卡（条目数/订阅者/融合延迟/吞吐/YOLO 识别 highlight）每 5s polling + WS blackboard.updated/perception.detection 时间线（最多 20 条）；左侧 2 视频卡 mock 渐变 + bbox 静态展示（survivor 蓝/fire 红/smoke 灰虚线）+ YOLOv8 模型信息卡；右侧 filter chips（全部/幸存者/火点/烟雾/倒塌建筑）+ key 前缀搜索 + 黑板条目卡列表（fused 绿渐变/fire 红渐变标识 + sources/value/updated/TTL 显示）；(5) Admin 实装：左侧 240px 菜单（机器人注册/用户管理/角色权限/审计日志/场景剧本/系统配置 6 项）+ 系统信息底卡；机器人注册主面板 = 4 统计卡 + 工具栏 + 表格 10 列（含 checkbox/编号/名称/类型/型号/能力/编队/状态/注册时间/3 个 icon 操作）+ 底栏批量操作 + 分页；其他 5 个菜单进入显示 P8 实装占位；(6) Cockpit 联通真实数据：左栏机器人列表接 GET /robots（25 台）+ Tab 计数实时；右栏任务列表接 GET /tasks（无任务时 fallback mock 演示）；创建救援任务按钮 navigate /tasks；编队 / 召回中心 按钮 navigate /robots；WS task.created/cancelled 自动 refresh 任务列表；(7) Login → POST /auth/login → fetchMe → setSession → wsConnect → /cockpit 完整流程；(8) `vite.config.ts` Windows Hyper-V 占用 5173（5109-5208 段保留）改用 host=127.0.0.1 port=5500 strictPort=true，`backend/app/main.py` CORS allow 加 5500 兼容；npx tsc --noEmit exit=0；前端通过 vite dev HMR 自动热更，dev server 后台运行（task bex1i56ij）（2026-05-10）
 

@@ -34,6 +34,7 @@ import {
   type TaskType,
 } from '@/api/tasks';
 import { AppShell } from '@/components/common/AppShell';
+import { ReassignDialog } from '@/components/common/ReassignDialog';
 import { useWSStore } from '@/store/ws';
 
 type StatusTab = 'all' | 'PENDING' | 'EXECUTING' | 'COMPLETED' | 'failed';
@@ -83,6 +84,7 @@ export function TaskManagement() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState<TaskRead | null>(null);
 
   const wsConnect = useWSStore((s) => s.connect);
   const wsSubscribe = useWSStore((s) => s.subscribe);
@@ -189,7 +191,12 @@ export function TaskManagement() {
                 </div>
               )}
               {items.map((t) => (
-                <TaskCard key={t.id} task={t} onCancel={() => handleCancel(t)} />
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  onCancel={() => handleCancel(t)}
+                  onReassign={() => setReassignTarget(t)}
+                />
               ))}
             </div>
           </div>
@@ -222,11 +229,18 @@ export function TaskManagement() {
           </div>
         </div>
       </div>
+
+      <ReassignDialog
+        open={reassignTarget !== null}
+        task={reassignTarget}
+        onClose={() => setReassignTarget(null)}
+        onSuccess={() => refresh()}
+      />
     </AppShell>
   );
 }
 
-function TaskCard({ task, onCancel }: { task: TaskRead; onCancel: () => void }) {
+function TaskCard({ task, onCancel, onReassign }: { task: TaskRead; onCancel: () => void; onReassign: () => void }) {
   const pri = PRIORITY_LABEL[task.priority];
   const st = STATUS_LABEL[task.status];
   const completed = task.status === 'COMPLETED';
@@ -285,7 +299,7 @@ function TaskCard({ task, onCancel }: { task: TaskRead; onCancel: () => void }) 
           查看详情
         </button>
         {(task.status === 'EXECUTING' || task.status === 'ASSIGNED') && (
-          <button className="text-xs hover:underline flex items-center gap-1" style={{ color: 'var(--warning)' }} onClick={() => alert('改派 — P7.4 ReassignDialog 实装')}>
+          <button className="text-xs hover:underline flex items-center gap-1" style={{ color: 'var(--warning)' }} onClick={onReassign}>
             <Replace className="w-3 h-3" /> 改派
           </button>
         )}

@@ -49,6 +49,7 @@ import { listRobots, type RobotRead } from '@/api/robots';
 import { listTasks, type TaskRead } from '@/api/tasks';
 import { fetchKpi, type KPISnapshot } from '@/api/situation';
 import { AppShell } from '@/components/common/AppShell';
+import { ReassignDialog } from '@/components/common/ReassignDialog';
 import { useWSStore } from '@/store/ws';
 
 interface RobotMock {
@@ -130,6 +131,7 @@ export function Cockpit() {
   const [rightTab, setRightTab] = useState<'tasks' | 'alerts' | 'logs'>('tasks');
   const [robots, setRobots] = useState<RobotRead[]>([]);
   const [tasks, setTasks] = useState<TaskRead[]>([]);
+  const [reassignTarget, setReassignTarget] = useState<TaskRead | null>(null);
   const wsConnect = useWSStore((s) => s.connect);
   const wsSubscribe = useWSStore((s) => s.subscribe);
   const wsAddListener = useWSStore((s) => s.addListener);
@@ -515,7 +517,7 @@ export function Cockpit() {
           {rightTab === 'tasks' && (
             <div className="flex-1 overflow-y-auto scroll-thin px-3 py-2 space-y-2.5">
               {tasks.length > 0
-                ? tasks.map((t) => <TaskCardReal key={t.id} task={t} />)
+                ? tasks.map((t) => <TaskCardReal key={t.id} task={t} onReassign={() => setReassignTarget(t)} />)
                 : TASK_MOCKS.map((t) => <TaskCard key={t.code} task={t} />)}
               {tasks.length === 0 && (
                 <div className="text-center text-xs py-2" style={{ color: 'var(--text-tertiary)' }}>
@@ -559,6 +561,15 @@ export function Cockpit() {
           </div>
         </aside>
       </main>
+
+      <ReassignDialog
+        open={reassignTarget !== null}
+        task={reassignTarget}
+        onClose={() => setReassignTarget(null)}
+        onSuccess={() => {
+          listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);
+        }}
+      />
     </AppShell>
   );
 }
@@ -673,7 +684,7 @@ function TaskCard({ task }: { task: TaskMock }) {
   );
 }
 
-function TaskCardReal({ task }: { task: TaskRead }) {
+function TaskCardReal({ task, onReassign }: { task: TaskRead; onReassign: () => void }) {
   const sideColor = task.priority === 1 ? 'var(--danger)' : task.priority === 2 ? 'var(--warning)' : 'var(--success)';
   const priorityLabel = task.priority === 1 ? 'HIGH' : task.priority === 2 ? 'MED' : 'LOW';
   const priorityBadge = task.priority === 1 ? 'badge-danger' : task.priority === 2 ? 'badge-warning' : 'badge-success';
@@ -692,10 +703,21 @@ function TaskCardReal({ task }: { task: TaskRead }) {
         <span className={`badge ${statusBadge}`}>{task.status}</span>
       </div>
       <div className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>{task.name}</div>
-      <div className="flex items-center gap-2 mb-1">
+      <div className="flex items-center gap-2 mb-2">
         <div className="flex-1 progress-bar"><div className="progress-fill" style={{ width: `${task.progress}%` }} /></div>
         <span className="text-xs mono font-semibold">{Number(task.progress).toFixed(0)}%</span>
       </div>
+      {(task.status === 'EXECUTING' || task.status === 'ASSIGNED') && (
+        <div className="flex justify-end">
+          <button
+            className="text-xs hover:underline flex items-center gap-1"
+            style={{ color: 'var(--warning)' }}
+            onClick={onReassign}
+          >
+            <Replace className="w-3 h-3" /> 改派
+          </button>
+        </div>
+      )}
     </div>
   );
 }

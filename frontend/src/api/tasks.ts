@@ -90,3 +90,18 @@ export async function cancelTask(id: string, reason: string): Promise<TaskRead> 
   const r: AxiosResponse<TaskRead> = await api.post(`/tasks/${id}/cancel`, { reason });
   return r.data;
 }
+
+export interface TaskAssignmentRead {
+  id: string;
+  task_id: string;
+  robot_id: string;
+  auction_id: string | null;
+  assigned_at: string;
+  released_at: string | null;
+  is_active: boolean;
+}
+
+export async function listTaskAssignments(taskId: string): Promise<TaskAssignmentRead[]> {
+  const r: AxiosResponse<TaskAssignmentRead[]> = await api.get(`/tasks/${taskId}/assignments`);
+  return r.data;
+}
