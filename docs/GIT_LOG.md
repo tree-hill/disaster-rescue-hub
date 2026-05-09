@@ -24,6 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-09 — P5.8
+
+- 任务：P5.8 跑通所有测试用例（ALGORITHM_TESTCASES TC-1~TC-10 + TC-E2E-1/2）
+- 工具：Claude Code
+- 分支：main
+- Commit message：test: P5.8 algorithm test cases + dispatch e2e (TC-1..10 + TC-E2E-1/2)
+- Commit hash：(本任务 commit 后回填)
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/tests/algorithms/__init__.py（新增空 init）
+  - backend/tests/algorithms/conftest.py（新增）：ALGORITHM_TESTCASES §0.2 fixtures + `_r` / `_t` / `by_code` 助手 + generate_robot(i) / generate_task(i) 网格生成器
+  - backend/tests/algorithms/test_dispatch_algorithms.py（新增）：10 个测试函数对应 TC-1~TC-10；TC-7 用 `_fake_bid(value)` 注入字面出价矩阵，证明 Hungarian 28 vs Greedy 22；TC-9 用 `pstdev` 验 h_std ≤ g_std；TC-10 用 perf_counter 测 25×10 决策延迟
+  - backend/tests/e2e/__init__.py（新增空 init）
+  - backend/tests/e2e/conftest.py（新增）：function-scoped autouse fixture（每用例 engine.dispose + EventBus.reset_for_tests + register_auto_trigger + bus.start + DB cleanup by E2E_TASK_PREFIX="T-8888"/ROBOT="UAV-E2E"；teardown 反序）+ httpx ASGITransport client + commander_headers（复用 commander001）+ small_circle_target_area / seed_e2e_robot / wait_until 助手；engine.dispose 是关键：pytest-asyncio 0.23 每用例新 loop，asyncpg 连接池绑 loop 必须重建
+  - backend/tests/e2e/test_dispatch_e2e.py（新增）：TC-E2E-1 任务全生命周期（POST /tasks → auto-trigger → ASSIGNED + auction/bids/active assignment + 手动 transit EXECUTING/COMPLETED + started_at/completed_at 副作用）+ TC-E2E-2 HITL 改派完整链路（monkeypatch bus.publish 包 real_publish 抓 task.reassigned + intervention.recorded 双事件 + DB intervention before/after_state 字段断言）
+  - venv：装 pytest 8.0.2 + pytest-asyncio 0.23.8（pyproject dev 字面）
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P5.8 完成记录；P5 阶段完结，下一任务 P6.1 黑板系统
+- 自检：`python -m pytest tests -v` 12/12 全绿 2.46s（10 算法 + 2 E2E）；幂等可重跑（teardown 清场）
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P5.7
 
 - 任务：P5.7 任务自动触发拍卖（task.created auto-trigger + PENDING 30s scanner）
