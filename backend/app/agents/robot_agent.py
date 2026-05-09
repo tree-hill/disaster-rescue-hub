@@ -44,9 +44,11 @@ from app.core.constants import (
 )
 from app.db.session import async_session_maker
 from app.models.robot import RobotFault, RobotState
+from app.perception.service import PerceptionService
 from app.repositories.robot import RobotRepository
 from app.repositories.robot_fault import RobotFaultRepository
 from app.repositories.robot_state import RobotStateRepository
+from app.schemas.common import Detection, Position
 from app.ws.events import push_event
 
 logger = logging.getLogger(__name__)
@@ -497,6 +499,100 @@ class RobotAgent:
 
         # 5) 高频位置 emit 钩子（broadcaster 拉模型主推）
         self._emit_state_changed(state)
+
+        # 6) Mock 感知（P6.9：仅 has_yolo + 配置启用 + tick 取模 + IDLE/EXECUTING/RETURNING）
+        await self._perception_tick()
+
+    # ---------- Mock 感知（P6.9） ----------
+
+    async def _perception_tick(self) -> None:
+        """1Hz 调 PerceptionService.process_image（仅 has_yolo 机器人）。
+
+        触发条件（任一不满足即跳过）：
+        - settings.mock_perception_enabled=True
+        - capability.has_yolo=True
+        - fsm_state in {IDLE, EXECUTING, RETURNING}（FAULT/BIDDING 不跑）
+        - tick_count % mock_perception_tick_interval == 0
+
+        使用 deterministic 伪随机生成 detection（不依赖真实 AIDER）：每次调用按
+        mock_perception_detection_rate 决定是否产生 detection；产生时按权重选 class
+        + confidence ∈ [0.6, 0.95]。世界坐标取当前位置 + 微小偏移（≤ 50 m）。
+        """
+        if not settings.mock_perception_enabled:
+            return
+        if not self.capability.get("has_yolo"):
+            return
+        if self.fsm_state not in {"IDLE", "EXECUTING", "RETURNING"}:
+            return
+        interval = max(1, int(settings.mock_perception_tick_interval))
+        if self.tick_count % interval != 0:
+            return
+
+        detections = self._mock_generate_detections()
+        # detections 为空时仍调 process_image（PerceptionService 内部 valid==[] 早返回，
+        # 不写黑板/不推 WS），保持 frame 计数节奏，便于演示日志可读
+        try:
+            async with async_session_maker() as session:
+                await PerceptionService(session).process_image(
+                    robot_id=self.robot_id,
+                    robot_code=self.code,
+                    position=Position(
+                        lat=float(self.position["lat"]),
+                        lng=float(self.position["lng"]),
+                    ),
+                    detections=detections,
+                    frame_id=f"{self.code}-mock-{self.tick_count:06d}",
+                    inference_time_ms=15,
+                )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "robot_agent_perception_tick_failed",
+                extra={"robot_id": str(self.robot_id), "code": self.code},
+            )
+
+    # mock detection 类别权重（survivor 高频是为了演示 vision_boost 链路）
+    _MOCK_CLASSES: list[tuple[str, int, float]] = [
+        # (class_name, class_id, weight)
+        ("survivor", 0, 0.40),
+        ("fire", 3, 0.25),
+        ("smoke", 2, 0.20),
+        ("collapsed_building", 1, 0.15),
+    ]
+
+    def _mock_generate_detections(self) -> list[Detection]:
+        """按概率生成 0~1 条 detection。位置在当前 position 周围 ±50 m。"""
+        rate = float(settings.mock_perception_detection_rate)
+        if rate <= 0 or random.random() > rate:
+            return []
+
+        # 加权抽样选类别
+        r = random.random()
+        cumulative = 0.0
+        chosen = self._MOCK_CLASSES[0]
+        for cn, cid, w in self._MOCK_CLASSES:
+            cumulative += w
+            if r <= cumulative:
+                chosen = (cn, cid, w)
+                break
+        class_name, class_id, _ = chosen
+
+        # 偏移 ≤ 50 m：1 m ≈ 1/METERS_PER_DEGREE 度
+        offset_deg = 50.0 / METERS_PER_DEGREE
+        wp_lat = self.position["lat"] + (random.random() - 0.5) * 2 * offset_deg
+        wp_lng = self.position["lng"] + (random.random() - 0.5) * 2 * offset_deg
+
+        # confidence ∈ [0.6, 0.95]：覆盖 INV-5（≥0.5 写入）+ 高置信度告警阈值
+        confidence = 0.6 + random.random() * 0.35
+
+        return [
+            Detection(
+                class_id=class_id,
+                class_name=class_name,  # type: ignore[arg-type]
+                confidence=round(confidence, 3),
+                bbox=[100.0, 100.0, 300.0, 300.0],  # 占位 bbox
+                world_position=Position(lat=wp_lat, lng=wp_lng),
+            )
+        ]
 
     async def run(self) -> None:
         """1Hz 主循环。响应 stop()/cancel 优雅退出。"""

@@ -24,6 +24,25 @@
 
 ## 提交记录
 
+### 2026-05-09 — P6.9
+
+- 任务：P6.9 Mock 视觉数据流
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P6.9 mock perception tick on RobotAgent (has_yolo + configurable rate)
+- Commit hash：（待回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/agents/robot_agent.py（修改）：_tick() 末尾追加 await self._perception_tick()；新增 _perception_tick：跳过条件（mock_perception_enabled=False / has_yolo=False / fsm 不在 IDLE/EXECUTING/RETURNING / tick % interval ≠ 0）；满足时 fresh session 内调 PerceptionService.process_image，frame_id="{code}-mock-{tick:06d}"；try/except 仅日志不让 tick 死亡；新增 _mock_generate_detections：按 detection_rate 概率抽 0/1 条 + 4 类加权(survivor 0.40 / fire 0.25 / smoke 0.20 / collapsed_building 0.15) + conf 0.6+random*0.35 round(3) + 当前 position±50m 偏移（50/METERS_PER_DEGREE）+ bbox 占位 [100,100,300,300]；类常量 _MOCK_CLASSES
+  - backend/app/core/config.py（修改）：加 mock_perception_enabled=False / mock_perception_tick_interval=1 / mock_perception_detection_rate=0.0；默认全关，避免 pytest 触发；演示时开 enabled=True + rate=0.05~0.2
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：P6.9 完成；下一任务跳到 P7（P6 闭环；P6.4/P6.5 标记 Deferred 用户独立完成）
+- 自检：16/16 全绿（A 跳过条件 4：enabled=False / has_yolo=False / FAULT 状态 / tick%interval≠0；B 触发 2：黑板有写入 + class 4 类内；C _mock_generate_detections 8：rate=0 空 / rate=1 单条 / class_name 4 类内 / confidence∈[0.6,0.95] / world_position 非空 + 偏移≤50m / bbox 4 元素 / 100 次抽样跨多类；D 端到端 2：5 tick × rate=1 → 5 次黑板写入 + items≥1）；脚本验收后删除；`python -m pytest tests -q` 12/12 无回归 2.81s
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P6.6 + P6.7 + P6.8（合并）
 
 - 任务：P6.6 PerceptionService + P6.7 自动派任务 + P6.8 vision_boost 联通；P6.4/P6.5（数据集 + GPU 训练）由用户在 Colab 独立完成

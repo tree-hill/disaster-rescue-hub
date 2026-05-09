@@ -57,5 +57,16 @@ class Settings(BaseSettings):
     # 设为 0 即禁用 scanner（pytest / 自检场景）。
     blackboard_cleanup_interval_sec: float = 60.0
 
+    # Mock 视觉数据流（P6.9）
+    # 仅 has_yolo=True 的机器人触发；启用后 RobotAgent 每 N tick 调一次
+    # PerceptionService.process_image（mock detection 生成器，不依赖 AIDER）。
+    # 默认 False：pytest / 自检不跑。演示时开启 + 调 detection_rate 即可看到全链路。
+    mock_perception_enabled: bool = False
+    # 每 N tick 触发一次推理（默认每 tick 都跑，与 BUSINESS_RULES §5.1 1Hz 一致；
+    # tick_hz=1 时 N=1 即 1Hz）
+    mock_perception_tick_interval: int = 1
+    # 单次推理产生 detection 的概率（演示/答辩场景调 0.05~0.2 比较直观）
+    mock_perception_detection_rate: float = 0.0
+
 
 settings = Settings()
