@@ -43,6 +43,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { useNavigate } from 'react-router-dom';
+
+import { listRobots, type RobotRead } from '@/api/robots';
+import { listTasks, type TaskRead } from '@/api/tasks';
 import { fetchKpi, type KPISnapshot } from '@/api/situation';
 import { AppShell } from '@/components/common/AppShell';
 import { useWSStore } from '@/store/ws';
@@ -55,6 +59,12 @@ interface RobotMock {
   detail: string;
   taskCode?: string;
 }
+
+const TYPE_LABEL_RT: Record<'uav' | 'ugv' | 'usv', string> = {
+  uav: '无人机',
+  ugv: '地面',
+  usv: '水面',
+};
 
 const ROBOT_MOCKS: RobotMock[] = [
   { code: 'UAV-003', type: 'aerial', fsm: 'EXECUTING', battery: 80, detail: '→ T-018 · (123, 456)', taskCode: 'T-018' },
@@ -114,27 +124,56 @@ function RobotIcon({ type }: { type: RobotMock['type'] }) {
 }
 
 export function Cockpit() {
+  const navigate = useNavigate();
   const [kpi, setKpi] = useState<KPISnapshot | null>(null);
   const [robotTab, setRobotTab] = useState<'all' | 'aerial' | 'ground' | 'marine'>('all');
   const [rightTab, setRightTab] = useState<'tasks' | 'alerts' | 'logs'>('tasks');
+  const [robots, setRobots] = useState<RobotRead[]>([]);
+  const [tasks, setTasks] = useState<TaskRead[]>([]);
   const wsConnect = useWSStore((s) => s.connect);
   const wsSubscribe = useWSStore((s) => s.subscribe);
   const wsAddListener = useWSStore((s) => s.addListener);
 
-  // 初次拉取 KPI
+  // 初次拉取 KPI / 机器人 / 任务
   useEffect(() => {
     fetchKpi().then(setKpi).catch(() => undefined);
+    listRobots({ page_size: 25 }).then((p) => setRobots(p.items)).catch(() => undefined);
+    listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);
   }, []);
 
-  // WS 订阅 commander → kpi.snapshot 实时刷新
+  // WS 订阅 commander → kpi.snapshot + task.* 实时刷新
   useEffect(() => {
     wsConnect();
     wsSubscribe('commander');
-    const off = wsAddListener<KPISnapshot>('kpi.snapshot', (snap) => setKpi(snap));
-    return off;
+    const offs = [
+      wsAddListener<KPISnapshot>('kpi.snapshot', (snap) => setKpi(snap)),
+      wsAddListener('task.created', () => {
+        listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);
+      }),
+      wsAddListener('task.cancelled', () => {
+        listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);
+      }),
+    ];
+    return () => offs.forEach((f) => f());
   }, [wsConnect, wsSubscribe, wsAddListener]);
 
-  const filtered = ROBOT_MOCKS.filter((r) => robotTab === 'all' || r.type === robotTab);
+  // robot.type uav→aerial / ugv→ground / usv→marine
+  const robotsView: RobotMock[] = robots.length > 0
+    ? robots.slice(0, 25).map((r) => ({
+        code: r.code,
+        type: r.type === 'uav' ? 'aerial' : r.type === 'ugv' ? 'ground' : 'marine',
+        fsm: 'IDLE',
+        battery: 100,
+        detail: `${TYPE_LABEL_RT[r.type]} · ${r.model ?? ''}`,
+      }))
+    : ROBOT_MOCKS;
+  const filtered = robotsView.filter((r) => robotTab === 'all' || r.type === robotTab);
+  const counts = {
+    all: robotsView.length,
+    aerial: robotsView.filter((r) => r.type === 'aerial').length,
+    ground: robotsView.filter((r) => r.type === 'ground').length,
+    marine: robotsView.filter((r) => r.type === 'marine').length,
+  };
 
   return (
     <AppShell fullHeight sessionInfo={
@@ -230,10 +269,10 @@ export function Cockpit() {
           </div>
           <div className="px-3 py-2 flex gap-1 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
             {[
-              { k: 'all' as const, label: `全部 ${ROBOT_MOCKS.length}` },
-              { k: 'aerial' as const, label: '空 10' },
-              { k: 'ground' as const, label: '陆 10' },
-              { k: 'marine' as const, label: '水 5' },
+              { k: 'all' as const, label: `全部 ${counts.all}` },
+              { k: 'aerial' as const, label: `空 ${counts.aerial}` },
+              { k: 'ground' as const, label: `陆 ${counts.ground}` },
+              { k: 'marine' as const, label: `水 ${counts.marine}` },
             ].map((t) => (
               <button
                 key={t.k}
@@ -333,14 +372,18 @@ export function Cockpit() {
             className="px-3 py-2 border-t flex gap-2"
             style={{ borderColor: 'var(--border-subtle)' }}
           >
-            <button className="flex-1 btn-ghost flex items-center justify-center gap-1">
-              <Plus className="w-3.5 h-3.5" /> 编队
+            <button
+              className="flex-1 btn-ghost flex items-center justify-center gap-1"
+              onClick={() => navigate('/robots')}
+            >
+              <Plus className="w-3.5 h-3.5" /> 全部
             </button>
             <button
               className="flex-1 btn-ghost flex items-center justify-center gap-1"
               style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+              onClick={() => navigate('/robots')}
             >
-              <RotateCcw className="w-3.5 h-3.5" /> 全员召回
+              <RotateCcw className="w-3.5 h-3.5" /> 召回中心
             </button>
           </div>
         </aside>
@@ -438,7 +481,7 @@ export function Cockpit() {
         <aside className="panel w-80 flex flex-col">
           <div className="flex border-b" style={{ borderColor: 'var(--border-subtle)' }}>
             {[
-              { k: 'tasks' as const, label: `任务 ${TASK_MOCKS.length}` },
+              { k: 'tasks' as const, label: `任务 ${tasks.length || kpi?.active_tasks || 0}` },
               { k: 'alerts' as const, label: '告警', badge: kpi?.active_alerts },
               { k: 'logs' as const, label: '日志' },
             ].map((t) => (
@@ -461,19 +504,24 @@ export function Cockpit() {
           </div>
 
           <div className="px-3 py-2.5 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-            <button className="btn-primary w-full flex items-center justify-center gap-1.5">
+            <button
+              className="btn-primary w-full flex items-center justify-center gap-1.5"
+              onClick={() => navigate('/tasks')}
+            >
               <Plus className="w-4 h-4" /> 创建救援任务
             </button>
           </div>
 
           {rightTab === 'tasks' && (
             <div className="flex-1 overflow-y-auto scroll-thin px-3 py-2 space-y-2.5">
-              {TASK_MOCKS.map((t) => (
-                <TaskCard key={t.code} task={t} />
-              ))}
-              <div className="text-center text-xs py-2" style={{ color: 'var(--text-tertiary)' }}>
-                ··· 更多任务 ···
-              </div>
+              {tasks.length > 0
+                ? tasks.map((t) => <TaskCardReal key={t.id} task={t} />)
+                : TASK_MOCKS.map((t) => <TaskCard key={t.code} task={t} />)}
+              {tasks.length === 0 && (
+                <div className="text-center text-xs py-2" style={{ color: 'var(--text-tertiary)' }}>
+                  暂无真实任务（mock 演示）· 点击「创建救援任务」前往任务管理
+                </div>
+              )}
             </div>
           )}
           {rightTab === 'alerts' && (
@@ -620,6 +668,33 @@ function TaskCard({ task }: { task: TaskMock }) {
         </button>
         <button className="btn-ghost" style={{ padding: '4px 8px' }}>取消</button>
         <button className="btn-ghost" style={{ padding: '4px 8px' }}>详情</button>
+      </div>
+    </div>
+  );
+}
+
+function TaskCardReal({ task }: { task: TaskRead }) {
+  const sideColor = task.priority === 1 ? 'var(--danger)' : task.priority === 2 ? 'var(--warning)' : 'var(--success)';
+  const priorityLabel = task.priority === 1 ? 'HIGH' : task.priority === 2 ? 'MED' : 'LOW';
+  const priorityBadge = task.priority === 1 ? 'badge-danger' : task.priority === 2 ? 'badge-warning' : 'badge-success';
+  const statusBadge =
+    task.status === 'EXECUTING' || task.status === 'ASSIGNED' ? 'badge-info'
+    : task.status === 'COMPLETED' ? 'badge-success'
+    : task.status === 'PENDING' ? 'badge-warning'
+    : 'badge-danger';
+  return (
+    <div className="rounded-lg p-3" style={{ background: 'var(--bg-tertiary)', borderLeft: `3px solid ${sideColor}` }}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold mono">{task.code}</span>
+          <span className={`badge ${priorityBadge}`}>{priorityLabel}</span>
+        </div>
+        <span className={`badge ${statusBadge}`}>{task.status}</span>
+      </div>
+      <div className="text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>{task.name}</div>
+      <div className="flex items-center gap-2 mb-1">
+        <div className="flex-1 progress-bar"><div className="progress-fill" style={{ width: `${task.progress}%` }} /></div>
+        <span className="text-xs mono font-semibold">{Number(task.progress).toFixed(0)}%</span>
       </div>
     </div>
   );

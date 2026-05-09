@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P7 态势感知 + 前端原型（P7.1 + P7.2 + P7.3 部分页面完成；剩余 4 页待实装）  
-当前任务：P7.3 6 大页面实现（BUILD_ORDER §P7.3）—— Login + Cockpit + AlertCenter 已实装；RobotManagement / TaskManagement / Blackboard / Admin 待实装  
+当前阶段：P7 态势感知 + 前端原型（P7.1 + P7.2 + P7.3 全 7 页完成）  
+当前任务：P7.4 改派弹窗（BUILD_ORDER §P7.4，对照 prototype_02_reassign_dialog.html）  
 任务来源：docs/BUILD_ORDER.md  
-备注：原型 01-06 用 #3B82F6 蓝主题 + Inter 字体 + 7 项菜单顶导，原型 07-10 风格不同 (#5dd2ff 青色) 已统一改为 01-06 标准。  
+备注：P7.3 完结：Login + Cockpit + RobotManagement + TaskManagement + Blackboard + AlertCenter + Admin 7 页全部实装并接入后端；统一以 01-06 (#3B82F6 蓝 + Inter + 7 项菜单) 为设计基准。  
 
 ---
 
@@ -44,8 +44,7 @@
 
 ### To Do
 
-- [ ] P7.3 剩余页面：RobotManagement（对照 prototype_07） / TaskManagement（对照 prototype_08） / Blackboard（对照 prototype_09） / Admin（对照 prototype_06）—— 都需以 01-06 设计标准统一
-- [ ] P7.4 改派弹窗（BUILD_ORDER §P7.4，对照 prototype_02）
+- [ ] P7.4 改派弹窗（BUILD_ORDER §P7.4，对照 prototype_02_reassign_dialog.html）：从 Cockpit 任务卡 / TaskManagement 任务卡 / AlertCenter 派遣灭火按钮触发，调 POST /dispatch/reassign
 
 ### Deferred（用户独立完成）
 
@@ -57,6 +56,8 @@
 暂无。
 
 ### Done
+
+- [x] P7.3 阶段 B：剩余 4 页面 + Cockpit/Login 联通 + Vite 端口修正：(1) `frontend/src/api/{robots,tasks,blackboard}.ts` 三个 API 客户端 + 完整类型；(2) RobotManagement 实装：5 统计卡（总数/UAV/UGV/USV/故障）+ 工具栏（search+type 过滤+清空+刷新）+ 主表格 8 列（编号/名称/类型/型号/能力/状态/电量/操作）行级点选 → 右侧 380px 详情面板（基础信息/位置任务/能力清单 + 编辑/紧急召回 grid-2 操作），分页 ‹ N ›，召回流程 prompt 原因→POST /robots/{id}/recall→刷新；(3) TaskManagement 实装：5 Tab（全部/待分配/执行中/完成/失败取消）+ 任务卡列表 borderLeft 按 priority 上色（高红/中橙/低绿）+ 进度条 + 改派/取消/详情按钮，右侧 460px 创建表单（任务名/4 类型 radio/3 优先级 radio/圆心+半径目标区域→自动算 area_km2/能力多选 chips）→POST /tasks 触发 P5.7 自动拍卖；WS task.created/cancelled/reassigned/auction.completed 自动 refresh；取消流程 prompt 原因→POST /tasks/{id}/cancel；(4) Blackboard 实装：5 统计卡（条目数/订阅者/融合延迟/吞吐/YOLO 识别 highlight）每 5s polling + WS blackboard.updated/perception.detection 时间线（最多 20 条）；左侧 2 视频卡 mock 渐变 + bbox 静态展示（survivor 蓝/fire 红/smoke 灰虚线）+ YOLOv8 模型信息卡；右侧 filter chips（全部/幸存者/火点/烟雾/倒塌建筑）+ key 前缀搜索 + 黑板条目卡列表（fused 绿渐变/fire 红渐变标识 + sources/value/updated/TTL 显示）；(5) Admin 实装：左侧 240px 菜单（机器人注册/用户管理/角色权限/审计日志/场景剧本/系统配置 6 项）+ 系统信息底卡；机器人注册主面板 = 4 统计卡 + 工具栏 + 表格 10 列（含 checkbox/编号/名称/类型/型号/能力/编队/状态/注册时间/3 个 icon 操作）+ 底栏批量操作 + 分页；其他 5 个菜单进入显示 P8 实装占位；(6) Cockpit 联通真实数据：左栏机器人列表接 GET /robots（25 台）+ Tab 计数实时；右栏任务列表接 GET /tasks（无任务时 fallback mock 演示）；创建救援任务按钮 navigate /tasks；编队 / 召回中心 按钮 navigate /robots；WS task.created/cancelled 自动 refresh 任务列表；(7) Login → POST /auth/login → fetchMe → setSession → wsConnect → /cockpit 完整流程；(8) `vite.config.ts` Windows Hyper-V 占用 5173（5109-5208 段保留）改用 host=127.0.0.1 port=5500 strictPort=true，`backend/app/main.py` CORS allow 加 5500 兼容；npx tsc --noEmit exit=0；前端通过 vite dev HMR 自动热更，dev server 后台运行（task bex1i56ij）（2026-05-10）
 
 - [x] P7.3 阶段 A：Login + Cockpit + AlertCenter（对照 prototype_03/01/10，全部按 01-06 设计标准统一为 #3B82F6 蓝主题 + Inter + 7 项菜单顶导）：global.css 注入 prototype_01 完整设计令牌（21 个 CSS variable + panel/badge-*/btn-primary/btn-warning/btn-ghost/btn-icon/progress-bar/scroll-thin/pulse-dot/kpi-num/nav-item/input-field/app-table 工具类）；index.html preconnect Google Fonts 加载 Inter+JetBrains Mono；`components/common/AppShell.tsx` 顶导（shield-check logo + 7 项 NavLink + sessionInfo + 主题/通知/用户头像下拉登出）；`api/auth.ts` login + fetchMe；`api/situation.ts` fetchKpi；`api/alerts.ts` listAlerts/getAlert/acknowledgeAlert/ignoreAlert + AlertRead/Page<T>/AlertListParams 类型；Login 页 1:1 复刻 prototype_03（左侧装饰 grid 背景 + radial 渐变 + RadioTower 标题 + 3 个指标卡，右侧角色选择 + 用户名/密码/记住我/登录按钮，登录流程 POST /auth/login → setSession 临时 token → GET /auth/me 拿 user → setSession 全量 → wsConnect → navigate /cockpit）；Cockpit 页 1:1 复刻 prototype_01（KPI 顶条 6 卡接 GET /situation/kpi + WS 'kpi.snapshot' 实时刷新；左栏机器人编队 5 卡 + 类型 Tab + 搜索 + FAULT 卡片紧急召回；中央地图 SVG 800×600 网格+危险区+幸存者信号+任务网格+5 个机器人+轨迹+比例尺，工具栏 + 浮层图例；右栏任务/告警/日志 Tab + 创建按钮 + 4 任务卡 + 底部最近告警；改派按钮占位 alert P7.4）；AlertCenter 页接 P7.1 后端（GET /alerts list 支持 severity/type/status/search/page 过滤；点击行选中右侧详情面板；详情拆 yolo_detection / sla_alert / 影响范围占位；ack/ignore 走 POST；WS commander 房间订阅 alert.raised/acknowledged/ignored 自动 refresh；分页 ‹ N › 控件；导出/派遣灭火/通知应急/实时画面 4 个按钮占位；6 统计卡）；router 不变（已在 P7.2 注册）；tsc --noEmit exit=0；vite build 15.63s 1573 modules dist 365.39 kB gzip 115.71 kB（2026-05-10，Claude Code）
 

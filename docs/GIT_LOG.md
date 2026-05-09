@@ -24,6 +24,34 @@
 
 ## 提交记录
 
+### 2026-05-10 — P7.3 阶段 B + 环境修正
+
+- 任务：P7.3 阶段 B —— 实装 RobotManagement / TaskManagement / Blackboard / Admin + Cockpit 联通真实数据 + Vite 端口绕过 Windows Hyper-V 保留段
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P7.3 stage B — 4 inner pages + cockpit real data + vite port 5500
+- Commit hash：（commit 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - frontend/src/api/robots.ts（新增）：listRobots/getRobot/listRobotStates/recallRobot + RobotRead/RobotDetailRead/RobotStateRead/FsmState/Position/RobotCapability 类型
+  - frontend/src/api/tasks.ts（新增）：listTasks/getTask/createTask/cancelTask + TaskRead/TaskCreatePayload/TargetArea/TaskRequiredCapabilities/TaskStatus/TaskType 类型
+  - frontend/src/api/blackboard.ts（新增）：listBlackboardEntries/getBlackboardStats + BlackboardEntry/BlackboardStats 类型
+  - frontend/src/pages/RobotManagement.tsx（重写）：5 统计卡 + 工具栏 + 8 列表格点选 → 380px 详情面板（基础信息/位置任务/能力清单 + 编辑/紧急召回 grid-2）+ 分页 + 召回 prompt→POST /robots/{id}/recall→刷新
+  - frontend/src/pages/TaskManagement.tsx（重写）：5 Tab + 任务卡 priority side border + 进度条 + 改派/取消/详情按钮；右侧 460px 创建表单（name/type radio/priority radio/圆心+半径目标区域 area_km2 自动算/能力 chips 多选）→POST /tasks 触发 P5.7 自动拍卖；取消 prompt→POST /tasks/{id}/cancel；WS task.created/cancelled/reassigned/auction.completed 自动 refresh
+  - frontend/src/pages/Blackboard.tsx（重写）：5 统计卡 polling 5s + WS blackboard.updated / perception.detection 时间线（≤20 条 + fused/dropped/fire 三态颜色）+ 2 mock 视频卡（bbox 静态展示）+ YOLOv8 模型信息卡；右侧 filter chips + key 前缀搜索 + 黑板条目卡（fused 绿渐变 / fire 红渐变 + sources/value/TTL）
+  - frontend/src/pages/Admin.tsx（重写）：左 240px 菜单 6 项 + 系统信息卡；机器人注册主面板 4 统计卡 + 工具栏 + 10 列表格（含 checkbox + 3 icon 操作）+ 底栏批量按钮 + 分页（其他 5 菜单显示 P8 占位）
+  - frontend/src/pages/Cockpit.tsx（修改）：左栏接 GET /robots(25 台) + Tab 计数实时；右栏接 GET /tasks（fallback mock 当无任务）+ 新增 TaskCardReal 组件；创建任务按钮 navigate /tasks；编队/召回中心 navigate /robots；WS task.created/cancelled 自动 refresh
+  - frontend/vite.config.ts（修改）：host='127.0.0.1' port=5500 strictPort=true（注释 Windows Hyper-V 5109-5208 保留段含 5173）
+  - backend/app/main.py（修改）：CORS allow_origins 加 http://localhost:5500 + http://127.0.0.1:5500
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：P7.3 完结，下一任务 P7.4
+- 自检：`npx tsc --noEmit` exit=0；vite dev server HMR 持续工作，登录后可访问 7 页面（/cockpit /robots /tasks /blackboard /alerts /admin /login）
+- 占位（待用户决定）：(a) Cockpit 地图静态 SVG → react-konva 实时渲染（P7.4 后），(b) 改派按钮 alert() × 3 处 → P7.4 ReassignDialog，(c) AlertCenter「派遣灭火/通知应急/实时画面」→ P8，(d) 创建任务地图绘制 → 当前经纬度文本输入替代，(e) Admin 编辑/启停/删除/批量 → P8（PUT/DELETE 后端已存在），(f) Blackboard 视频流 → 需 WebRTC/MJPEG 后端能力
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-10 — P7.3 阶段 A
 
 - 任务：P7.3 阶段 A — Login + Cockpit + AlertCenter（按 01-06 设计标准统一）

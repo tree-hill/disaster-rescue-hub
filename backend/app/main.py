@@ -108,7 +108,12 @@ app = FastAPI(
 # X-Request-Id 在最外层（让所有响应都带 header），所以最后 add。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    # 5173 是 Vite 默认；本机 Hyper-V 占用了 5173，开发改用 5500 / 127.0.0.1
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
