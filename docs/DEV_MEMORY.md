@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P5 调度算法**（P5.1~P5.8 全部完成，进入 P6 视觉感知）  
-当前任务：P6.1 黑板系统（BUILD_ORDER §P6.1）  
-最近完成：P5.8 跑通所有测试用例（`backend/tests/algorithms/conftest.py` + `test_dispatch_algorithms.py` 落地 ALGORITHM_TESTCASES §0.2 fixtures + TC-1~TC-10 共 10 个 pytest 用例，纯函数走 RuleEngine.filter + compute_full_bid + algo.solve 流水线 + TC-7 用 mock 出价矩阵证明 Hungarian 28 vs Greedy 22 + TC-10 25×10 决策延迟 < 2 s；`backend/tests/e2e/conftest.py` + `test_dispatch_e2e.py` TC-E2E-1（POST /tasks → auto-trigger → ASSIGNED → 手动 transit EXECUTING/COMPLETED + DB 终态）+ TC-E2E-2（HITL 改派完整链路：POST /tasks → 自动 ASSIGNED → POST /dispatch/reassign → DB assignment 切换 + intervention before/after_state + WS 双事件捕获）；pytest 8.0.2 + pytest-asyncio 0.23.8 装入 venv；E2E function-scoped fixture + engine.dispose 解决 pytest-asyncio 0.23 跨 loop 连接池问题；12/12 全绿 2.46s）（2026-05-09）  
-下一任务：P6.1 黑板系统（BUILD_ORDER §P6.1：blackboard 表 + 写入 / 查询 / TTL 清理）  
+当前阶段：**P6 视觉感知**（P6.1 黑板基础设施完成，下一任务 P6.2 信息融合）  
+当前任务：P6.2 信息融合（BUILD_ORDER §P6.2）  
+最近完成：P6.1 黑板基础设施（`app/schemas/blackboard.py` BlackboardValue/FusionSource/BlackboardEntryRead；`app/repositories/blackboard.py` save / find_by_id / find_latest_by_key / find_active(type/key_prefix/min_confidence/include_expired) / delete_by_ids / delete_expired；`app/communication/blackboard.py` Blackboard 单例 内存 dict 主 + asyncio.create_task 异步落库 fire-and-forget + INV-5 confidence<0.5 静默拒写 + TTL 三级优先级（expires_at > ttl_sec > value.type 默认表 survivor/fire/smoke/collapsed_building=300s + weather=30s + custom 永久）+ get/set/fuse/query/query_by_proximity/subscribe/unsubscribe/cleanup_expired，fuse P6.1 仅落基础替换语义+fused_from 追加（P6.2 改 weighted_average）+ query_by_proximity 用 haversine_km 与 R7/距离分量同源；`app/services/blackboard_cleanup.py` BlackboardCleanupScanner 60s 一轮 仿 PendingAuctionScanner（asyncio.Event + wait_for(timeout) 优雅停 + interval<=0 no-op + start/stop 幂等）+ 全局单例 + reset_scanner_for_tests；`core/config.py` 加 blackboard_cleanup_interval_sec=60.0；`main.py` lifespan startup register_ws_relays→register_auto_trigger→bus.start→PendingAuctionScanner→BlackboardCleanupScanner→AgentManager；shutdown 反序停（broadcaster→AgentManager→BlackboardCleanupScanner→PendingAuctionScanner→bus）；32/32 自检全绿（A set/get + INV-5 4 + B TTL 4 + C query/proximity 3 + D fuse 4 + E subscribe 3 + F cleanup 6 + G DB 持久化 2 + H scanner 生命周期 6；脚本验收后删除）；pytest 12/12 无回归 4.87s（2026-05-09）  
+下一任务：P6.2 信息融合（BUILD_ORDER §P6.2：weighted_average + resolve_conflict + fused_from 审计字段）  
 
 > 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 

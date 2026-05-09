@@ -24,6 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-09 — P6.1
+
+- 任务：P6.1 黑板基础设施
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P6.1 blackboard infrastructure (in-mem + async DB + TTL cleanup)
+- Commit hash：（待回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/schemas/blackboard.py（新增）：BlackboardValue（extra="allow" 兼容 §4.9 自由扩展）+ FusionSource（confidence/weight 都 [0,1]）+ BlackboardEntryRead（DATA_CONTRACTS §5 字面）
+  - backend/app/repositories/blackboard.py（新增）：save / find_by_id / find_latest_by_key（updated_at DESC + include_expired 切换） / find_active（type_filter 用 JSONB ->>'type' / key_prefix LIKE / min_confidence ≥ 0.5 / include_expired 默认 False） / delete_by_ids / delete_expired（DELETE WHERE expires_at IS NOT NULL AND < now，返回 rowcount）
+  - backend/app/communication/__init__.py（新增空 init）
+  - backend/app/communication/blackboard.py（新增）：Blackboard 进程级单例 + BlackboardEntrySnapshot dataclass（is_expired 方法）+ MIN_BLACKBOARD_CONFIDENCE=0.5（INV-5）+ DEFAULT_TTL_SEC_BY_TYPE（survivor/fire/smoke/collapsed_building=300、weather=30、custom 不给默认 → 永久）+ set/fuse 静默拒写 < 0.5 + asyncio.create_task fire-and-forget 落库（失败仅 logger.exception，不影响内存）+ 内存 dict 同 key 后写覆盖前写 + _resolve_expires_at 三级优先级（expires_at > ttl_sec > 默认表 > None）+ get/query（按 type_filter/key_prefix/min_confidence/include_expired 过滤，updated_at DESC）+ query_by_proximity（haversine_km 复用 rule_engine + 距离升序）+ subscribe/unsubscribe（去重 + await 串行 + 异常仅日志）+ cleanup_expired（lock 内删内存 + fresh session DB delete_expired，返回 (mem_count, db_count)）+ reset_blackboard_for_tests + get_blackboard()
+  - backend/app/services/blackboard_cleanup.py（新增）：BlackboardCleanupScanner 仿 PendingAuctionScanner（asyncio.Event + wait_for(timeout=interval) 优雅停 + interval<=0 no-op + 重复 start/stop 幂等 + _run_loop 单轮异常仅日志保循环不退出）+ 全局单例 get_blackboard_cleanup_scanner + reset_scanner_for_tests
+  - backend/app/core/config.py（扩展）：blackboard_cleanup_interval_sec: float = 60.0
+  - backend/app/main.py（修改）：lifespan startup 加 BlackboardCleanupScanner.start（settings>0 才起）；shutdown 反序停（broadcaster → AgentManager → BlackboardCleanupScanner → PendingAuctionScanner → bus）
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P6.1 完成记录；下一任务 P6.2 信息融合
+- 自检：32/32 全绿（A set/get + INV-5 4 + B TTL 4 + C query/proximity 3 + D fuse 4 + E subscribe 3 + F cleanup 6 + G DB 持久化 2 + H scanner 生命周期 6；脚本验收后删除）；`python -m pytest tests -v` 12/12 无回归 4.87s
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P5.8
 
 - 任务：P5.8 跑通所有测试用例（ALGORITHM_TESTCASES TC-1~TC-10 + TC-E2E-1/2）

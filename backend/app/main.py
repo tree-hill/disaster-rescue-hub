@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
 from app.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
+from app.services.blackboard_cleanup import get_blackboard_cleanup_scanner
 from app.services.dispatch_trigger import (
     get_pending_auction_scanner,
     register_auto_trigger,
@@ -39,8 +40,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     顺序：
     - startup：EventBus（注册 WS 转推 + 自动拍卖 trigger）→ PendingAuctionScanner
-      → AgentManager → PositionBroadcaster
-    - shutdown：先停 broadcaster（不再读 Agent）→ AgentManager → Scanner → EventBus
+      → BlackboardCleanupScanner → AgentManager → PositionBroadcaster
+    - shutdown：先停 broadcaster（不再读 Agent）→ AgentManager →
+      BlackboardCleanupScanner → PendingAuctionScanner → EventBus
       （让 service 层晚发布的最后一波 task.* 事件能被 dispatch loop 消费完）
     """
     bus = get_event_bus()
@@ -56,6 +58,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         and settings.dispatch_pending_scan_interval_sec > 0
     ):
         await scanner.start()
+    blackboard_cleanup = get_blackboard_cleanup_scanner(
+        interval_sec=settings.blackboard_cleanup_interval_sec
+    )
+    if settings.blackboard_cleanup_interval_sec > 0:
+        await blackboard_cleanup.start()
     if settings.mock_agents_enabled:
         await get_agent_manager().start_all()
         await get_broadcaster().start()
@@ -65,6 +72,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.mock_agents_enabled:
             await get_broadcaster().stop()
             await get_agent_manager().stop_all()
+        await blackboard_cleanup.stop()
         await scanner.stop()
         await bus.stop()
 

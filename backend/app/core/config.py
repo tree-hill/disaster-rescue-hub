@@ -52,5 +52,10 @@ class Settings(BaseSettings):
     dispatch_auto_trigger_enabled: bool = True
     dispatch_pending_scan_interval_sec: float = 30.0
 
+    # 黑板 TTL 清理（P6.1）
+    # BUILD_ORDER §P6.1：定时任务每分钟清理过期条目。
+    # 设为 0 即禁用 scanner（pytest / 自检场景）。
+    blackboard_cleanup_interval_sec: float = 60.0
+
 
 settings = Settings()
