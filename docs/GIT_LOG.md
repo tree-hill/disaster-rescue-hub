@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P6.6+P6.7+P6.8 perception service + auto-rescue + vision_boost from blackboard
-- Commit hash：（待回填）
+- Commit hash：c25052b
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
