@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P7.4 ReassignDialog (HITL) wired to /dispatch/reassign
-- Commit hash：（commit 后回填）
+- Commit hash：1a88f42
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
