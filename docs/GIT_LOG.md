@@ -24,6 +24,25 @@
 
 ## 提交记录
 
+### 2026-05-09 — P6.2
+
+- 任务：P6.2 信息融合
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P6.2 fusion (weighted_average + resolve_conflict + fused_from audit)
+- Commit hash：（待回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/communication/fusion.py（新增）：FusionInput dataclass + weighted_average(values, weights)（校验长度+sum>0 否则 ValueError，math.fsum 防累积误差）+ resolve_conflict(inputs)（max((timestamp, confidence)) → 返回 winning value['type']）+ fuse_inputs(inputs) 主入口 → (fused_value, fused_confidence, fused_from)：winner=同 type sources 走 confidence 加权 position.lat/lng + area_m2 + detected_count(int round) + altitude_m/heading_deg max conf 保留；intensity 按 max conf 投票；自由扩展字段（type/position/area_m2/intensity/detected_count 之外）保留最高 conf winner 的；fused_confidence=max(winners.confidence)；fused_from=winners weight=conf/sum 归一化(和=1) + losers weight=0 审计
+  - backend/app/communication/blackboard.py（修改）：Blackboard.fuse 重写调 fusion.fuse_inputs —— existing 作为单 FusionInput（confidence/timestamp=updated_at/value=snapshot.value）+ 新写入合并；首次 fuse / existing 已过期 → 等价 set + fused_from=[新 source weight=1.0]；source_robot_id 取最近写入者；INV-5 仍守；is_fused=True
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：P6.2 完成移位；下一任务 P6.3 黑板 REST + WS
+- 自检：33/33 全绿（A wavg 4：等权/不等权/sum=0 报错/长度不一致报错；B resolve 2：时间 DESC + conf 平手；C 同 type 加权 8：position/area_m2/detected_count int 取整/intensity max conf/fused_confidence=max/fused_from 和=1/winner type 选择；D 类型冲突 5：winner=最新/position 仅 winner/loser weight=0/winner 和=1/fused_confidence=winner max；E 自由扩展 2：tag max conf + extra 保留；F 增量融合 8：首次 weight=1/二次加权/confidence=max/fused_from 含 2/和=1；G 类型冲突场景 3；H INV-5 1）；脚本验收后删除；`python -m pytest tests -q` 12/12 无回归 3.13s
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P6.1
 
 - 任务：P6.1 黑板基础设施

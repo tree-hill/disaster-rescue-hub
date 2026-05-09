@@ -39,6 +39,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
+from app.communication.fusion import FusionInput, fuse_inputs
 from app.db.session import async_session_maker
 from app.dispatch.rule_engine import haversine_km
 from app.models.blackboard import BlackboardEntry as BlackboardEntryModel
@@ -194,14 +195,16 @@ class Blackboard:
         ttl_sec: float | None = None,
         expires_at: datetime | None = None,
     ) -> BlackboardEntrySnapshot | None:
-        """融合写入（P6.1 仅落基础替换语义；P6.2 改 weighted_average + resolve_conflict）。
+        """融合写入（P6.2 weighted_average + resolve_conflict）。
 
-        当前实现：
-        - 若 key 不存在 → 等价 set()，fused_from=[新 source]
-        - 若 key 已存在 → 复制旧 fused_from + 追加新 source；新值直接覆盖（P6.2 会改成
-          按 confidence 加权平均）。
+        - key 不存在 / 已过期 → 等价 set()，fused_from=[新 source weight=1.0]
+        - key 存在 → 把现有条目作为一个 FusionInput（confidence=existing.confidence,
+          timestamp=existing.updated_at, value=existing.value），新写入作为另一个
+          FusionInput；走 fusion.fuse_inputs 拿到 (融合 value / 融合 confidence /
+          fused_from 审计) 后通过 set() 写回；source_robot_id 取新写入者（最近一次
+          observer）。
 
-        签名与 set 兼容；P6.2 不改方法签名。
+        历史完整审计在 DB（每次 fuse 都新增一行），fused_from 只是「本轮融合输入清单」。
         """
         if confidence < MIN_BLACKBOARD_CONFIDENCE:
             logger.info(
@@ -210,26 +213,51 @@ class Blackboard:
             )
             return None
 
+        new_value_dict = _normalize_value(value)
+        now = _now_utc()
+        new_input = FusionInput(
+            robot_id=source_robot_id,
+            confidence=float(confidence),
+            timestamp=now,
+            value=new_value_dict,
+        )
+
         existing = self._entries.get(key)
-        new_source = {
-            "robot_id": str(source_robot_id) if source_robot_id else None,
-            "confidence": float(confidence),
-            "timestamp": _now_utc().isoformat(),
-            "weight": 1.0,  # P6.2 改为加权
-        }
-        if existing is None or existing.is_expired():
-            merged_fused_from: list[dict[str, Any]] = [new_source]
-        else:
-            merged_fused_from = list(existing.fused_from) + [new_source]
+        if existing is None or existing.is_expired(now=now):
+            return await self.set(
+                key=key,
+                value=new_value_dict,
+                confidence=confidence,
+                source_robot_id=source_robot_id,
+                ttl_sec=ttl_sec,
+                expires_at=expires_at,
+                fused_from=[
+                    {
+                        "robot_id": str(source_robot_id) if source_robot_id else None,
+                        "confidence": float(confidence),
+                        "timestamp": now.isoformat(),
+                        "weight": 1.0,
+                    }
+                ],
+                is_fused=True,
+            )
+
+        existing_input = FusionInput(
+            robot_id=existing.source_robot_id,
+            confidence=float(existing.confidence),
+            timestamp=existing.updated_at,
+            value=existing.value,
+        )
+        fused_value, fused_conf, fused_from = fuse_inputs([existing_input, new_input])
 
         return await self.set(
             key=key,
-            value=value,
-            confidence=confidence,
+            value=fused_value,
+            confidence=fused_conf,
             source_robot_id=source_robot_id,
             ttl_sec=ttl_sec,
             expires_at=expires_at,
-            fused_from=merged_fused_from,
+            fused_from=fused_from,
             is_fused=True,
         )
 

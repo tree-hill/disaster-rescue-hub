@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P6 视觉感知**（P6.1 黑板基础设施完成，下一任务 P6.2 信息融合）  
-当前任务：P6.2 信息融合（BUILD_ORDER §P6.2）  
-最近完成：P6.1 黑板基础设施（`app/schemas/blackboard.py` BlackboardValue/FusionSource/BlackboardEntryRead；`app/repositories/blackboard.py` save / find_by_id / find_latest_by_key / find_active(type/key_prefix/min_confidence/include_expired) / delete_by_ids / delete_expired；`app/communication/blackboard.py` Blackboard 单例 内存 dict 主 + asyncio.create_task 异步落库 fire-and-forget + INV-5 confidence<0.5 静默拒写 + TTL 三级优先级（expires_at > ttl_sec > value.type 默认表 survivor/fire/smoke/collapsed_building=300s + weather=30s + custom 永久）+ get/set/fuse/query/query_by_proximity/subscribe/unsubscribe/cleanup_expired，fuse P6.1 仅落基础替换语义+fused_from 追加（P6.2 改 weighted_average）+ query_by_proximity 用 haversine_km 与 R7/距离分量同源；`app/services/blackboard_cleanup.py` BlackboardCleanupScanner 60s 一轮 仿 PendingAuctionScanner（asyncio.Event + wait_for(timeout) 优雅停 + interval<=0 no-op + start/stop 幂等）+ 全局单例 + reset_scanner_for_tests；`core/config.py` 加 blackboard_cleanup_interval_sec=60.0；`main.py` lifespan startup register_ws_relays→register_auto_trigger→bus.start→PendingAuctionScanner→BlackboardCleanupScanner→AgentManager；shutdown 反序停（broadcaster→AgentManager→BlackboardCleanupScanner→PendingAuctionScanner→bus）；32/32 自检全绿（A set/get + INV-5 4 + B TTL 4 + C query/proximity 3 + D fuse 4 + E subscribe 3 + F cleanup 6 + G DB 持久化 2 + H scanner 生命周期 6；脚本验收后删除）；pytest 12/12 无回归 4.87s（2026-05-09）  
-下一任务：P6.2 信息融合（BUILD_ORDER §P6.2：weighted_average + resolve_conflict + fused_from 审计字段）  
+当前阶段：**P6 视觉感知**（P6.1~P6.2 完成，下一任务 P6.3 黑板 REST + WS）  
+当前任务：P6.3 黑板 REST + WS（BUILD_ORDER §P6.3）  
+最近完成：P6.2 信息融合（`app/communication/fusion.py` 三个纯函数：weighted_average(values, weights) 严格校验长度+sum>0；resolve_conflict(inputs) 时间 DESC + conf DESC 平手；fuse_inputs(inputs) 主入口 → (value, confidence, fused_from)，winner 同 type 走 confidence 加权 → position.lat/lng + area_m2 + detected_count(int 取整)，intensity 按 max conf 投票，自由扩展字段保留 max conf winner 的，fused_confidence=max，fused_from 含 winner 归一化权重(和=1) + loser weight=0 审计 + altitude_m/heading_deg max conf 保留；改 `Blackboard.fuse` 调 fuse_inputs：existing 作为单 FusionInput（confidence/timestamp/value 取自 snapshot）+ 新写入合并；首次 fuse 等价 set + fused_from=[新 source weight=1]；INV-5 仍守；33/33 自检全绿（A wavg 4 + B resolve 2 + C 同 type 加权 8 + D 类型冲突 5 + E 自由扩展 2 + F 增量融合 8 + G 类型冲突场景 3 + H INV-5 1；脚本验收后删除）；pytest 12/12 无回归 3.13s（2026-05-09）  
+下一任务：P6.3 黑板 REST + WS（BUILD_ORDER §P6.3：GET /blackboard/entries[/{key}] + GET /blackboard/stats + WS blackboard.updated）  
 
 > 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 
