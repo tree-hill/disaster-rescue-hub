@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P7.3 stage A — Login/Cockpit/AlertCenter (prototype 01-06 design baseline)
-- Commit hash：（commit 后回填）
+- Commit hash：35abaa1
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
