@@ -1,16 +1,17 @@
-"""调度编排服务（P5.4）。
+"""调度编排服务（P5.4 拍卖闭环 + P5.5 查询 / HITL 算法切换）。
 
 对照：
 - BUILD_ORDER §P5.4：start_auction(task_id) → Auction，候选 → 规则引擎过滤
   → 收集 bids → 算法求解 → 写 task_assignments → 发事件，**同事务原子写入**，
   测量 `decision_latency_ms`。
+- BUILD_ORDER §P5.5：list_auctions / get_auction_with_bids / switch_algorithm。
 - BUSINESS_RULES §1.4 / §1.5（算法 + 写库审计）+ §3（规则引擎硬约束）+ §3.4
   （拍卖失败处理：status=FAILED，任务保持 PENDING，发 auction.failed）+ §2.1
-  （PENDING → ASSIGNED 状态转移）。
-- DATA_CONTRACTS §1.10 / §1.11 / §1.9（auctions / bids / task_assignments 表）
-  + §4.7（BidBreakdown 结构）。
+  （PENDING → ASSIGNED 状态转移）+ §4.1 / §4.5（algorithm_switch HITL 流程）。
+- DATA_CONTRACTS §1.10 / §1.11 / §1.9 / §1.12（auctions / bids / task_assignments
+  / human_interventions 表）+ §4.7（BidBreakdown 结构）+ §4.8（before/after_state）。
 - WS_EVENTS §5：auction.started / auction.bid_submitted / auction.completed /
-  auction.failed 四个事件，commander 房间。
+  auction.failed / dispatch.algorithm_changed 五个事件。
 
 设计取舍：
 - **数据合并三处来源构造 RobotEvalInput**：robots 表（is_active/type/capability）
@@ -56,11 +57,14 @@ from app.dispatch.rule_engine import (
     RuleEngine,
     TaskEvalInput,
 )
+from app.core.constants import RECALL_REASON_MIN_LEN
 from app.models.dispatch import Auction, Bid
+from app.models.intervention import HumanIntervention
 from app.models.robot import Robot, RobotState
 from app.models.task import Task, TaskAssignment
 from app.repositories.auction import AuctionRepository
 from app.repositories.bid import BidRepository
+from app.repositories.intervention import InterventionRepository
 from app.repositories.robot import RobotRepository
 from app.repositories.robot_state import RobotStateRepository
 from app.repositories.task import TaskRepository
@@ -78,6 +82,7 @@ EVT_AUCTION_STARTED = "auction.started"
 EVT_AUCTION_BID_SUBMITTED = "auction.bid_submitted"
 EVT_AUCTION_COMPLETED = "auction.completed"
 EVT_AUCTION_FAILED = "auction.failed"
+EVT_DISPATCH_ALGORITHM_CHANGED = "dispatch.algorithm_changed"
 
 # === 默认兜底（无最新 robot_state 时使用）===
 # 与 seed.py / RobotAgent 启动初值一致，避免规则引擎对稀疏数据返回错误结果。
@@ -138,6 +143,37 @@ def _task_not_found(task_id: UUID) -> BusinessError:
         http_status=404,
         details=[{"field": "task_id", "code": "not_found", "message": str(task_id)}],
     )
+
+
+def _auction_not_found(auction_id: UUID) -> BusinessError:
+    return BusinessError(
+        code="404_AUCTION_NOT_FOUND_001",
+        message="拍卖会话不存在",
+        http_status=404,
+        details=[
+            {"field": "auction_id", "code": "not_found", "message": str(auction_id)}
+        ],
+    )
+
+
+def _validate_reason(reason: str) -> None:
+    """BUSINESS_RULES §4.3.1 + §6.5：reason ≥ 5 字符且非纯空白。
+
+    特化错误码 422_INTERVENTION_REASON_INVALID_001（与 cancel_task / recall 同款）。
+    """
+    if not isinstance(reason, str) or len(reason.strip()) < RECALL_REASON_MIN_LEN:
+        raise BusinessError(
+            code="422_INTERVENTION_REASON_INVALID_001",
+            message=f"reason 至少 {RECALL_REASON_MIN_LEN} 个非空白字符",
+            http_status=422,
+            details=[
+                {
+                    "field": "reason",
+                    "code": "too_short_or_blank",
+                    "message": f"strip 后长度 {len(reason.strip()) if isinstance(reason, str) else 0}",
+                }
+            ],
+        )
 
 
 def _task_not_pending(task: Task) -> BusinessError:
@@ -229,6 +265,7 @@ class DispatchService:
         self.robot_states = RobotStateRepository(session)
         self.auctions = AuctionRepository(session)
         self.bids = BidRepository(session)
+        self.interventions = InterventionRepository(session)
         self._engine = RuleEngine()
 
     async def start_auction(
@@ -551,3 +588,136 @@ class DispatchService:
                 "auction_publish_failed",
                 extra={"event_type": event_type, "payload": payload},
             )
+
+    # ---------- P5.5 查询接口 ----------
+
+    async def list_auctions(
+        self,
+        *,
+        task_id: UUID | None,
+        algorithm: str | None,
+        start_time: datetime | None,
+        end_time: datetime | None,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[Auction], int]:
+        """GET /dispatch/auctions：分页查询拍卖会话列表。
+
+        列表接口返回的每条 Auction **不带 bids**（前端展开详情时再单独拉，
+        见 get_auction_with_bids）。
+        """
+        return await self.auctions.find_paginated(
+            task_id=task_id,
+            algorithm=algorithm,
+            start_time=start_time,
+            end_time=end_time,
+            page=page,
+            page_size=page_size,
+        )
+
+    async def get_auction_with_bids(
+        self, auction_id: UUID
+    ) -> tuple[Auction, list[Bid]]:
+        """GET /dispatch/auctions/{id}：含 bids 详情。
+
+        404_AUCTION_NOT_FOUND_001 → auction_id 不存在；bids 按 bid_value DESC 排序。
+        """
+        auction = await self.auctions.find_by_id(auction_id)
+        if auction is None:
+            raise _auction_not_found(auction_id)
+        bids = await self.bids.find_by_auction(auction_id)
+        return auction, bids
+
+    # ---------- P5.5 HITL 算法切换 ----------
+
+    async def switch_algorithm(
+        self,
+        new_algorithm: str,
+        *,
+        user_id: UUID,
+        reason: str,
+    ) -> tuple[str, str, UUID]:
+        """POST /dispatch/algorithm：HITL 切换调度算法（BUSINESS_RULES §4.5）。
+
+        流程：
+          1. reason ≥5 字符且非纯空白 → 422_INTERVENTION_REASON_INVALID_001
+          2. new_algorithm ∈ KNOWN_ALGORITHMS（schema 层 Literal 已挡，service 兜底）
+          3. before_state = {algorithm: 旧}
+          4. DispatchSettings.set_algorithm(new)（进程内全局立即生效；
+             已 OPEN 的拍卖不受影响 — BUSINESS_RULES §4.5）
+          5. after_state = {algorithm: 新}
+          6. 写 human_interventions(intervention_type='algorithm_switch')，同事务
+          7. commit
+          8. publish dispatch.algorithm_changed（commander + admin 两房间）
+
+        返回 (previous, current, intervention_id) 供 API 层组装响应。
+        切换前后是同一算法名也允许（写 intervention 留痕，便于审计「谁尝试过切到
+        相同名」），与 cancel_task 同款审计哲学。
+        """
+        _validate_reason(reason)
+
+        if new_algorithm not in KNOWN_ALGORITHMS:
+            raise BusinessError(
+                code="422_VALIDATION_FAILED_001",
+                message=f"未知算法 {new_algorithm}",
+                http_status=422,
+                details=[
+                    {
+                        "field": "algorithm",
+                        "code": "unknown_algorithm",
+                        "message": new_algorithm,
+                    },
+                    {
+                        "field": "algorithm",
+                        "code": "expected_one_of",
+                        "message": ",".join(sorted(KNOWN_ALGORITHMS)),
+                    },
+                ],
+            )
+
+        settings = get_dispatch_settings()
+        previous = settings.current_algorithm
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        before_state: dict[str, Any] = {"algorithm": previous, "timestamp": now_iso}
+
+        # 4) 内存切换 — service 提交事务前把全局先改了；即便 commit 失败也能 rollback
+        # 全局回写。但如果 commit 失败、外层 catch 后调 set_algorithm(previous) 即可。
+        settings.set_algorithm(new_algorithm)
+
+        try:
+            after_state: dict[str, Any] = {
+                "algorithm": new_algorithm,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            intervention = HumanIntervention(
+                user_id=user_id,
+                intervention_type="algorithm_switch",
+                target_task_id=None,
+                target_robot_id=None,
+                before_state=before_state,
+                after_state=after_state,
+                reason=reason,
+            )
+            await self.interventions.save(intervention)
+            await self.session.commit()
+            await self.session.refresh(intervention)
+        except Exception:
+            # commit 失败 → 把全局算法切回原值，避免「内存改了但 DB 没记录」
+            settings.set_algorithm(previous)
+            await self.session.rollback()
+            raise
+
+        # 8) commit 成功后 publish；commander + admin 两房间
+        await self._publish(
+            EVT_DISPATCH_ALGORITHM_CHANGED,
+            {
+                "from_algorithm": previous,
+                "to_algorithm": new_algorithm,
+                "switched_by_user_id": str(user_id),
+                "reason": reason,
+                "intervention_id": str(intervention.id),
+            },
+        )
+
+        return previous, new_algorithm, intervention.id

@@ -1,15 +1,15 @@
 """Bid 数据访问层。
 
-对照 BUILD_ORDER §P5.4 + DATA_CONTRACTS §1.11（bids 表）+ BUSINESS_RULES §1.5
-（每次拍卖 N 条 bid，每个候选机器人 1 条）。
+对照 BUILD_ORDER §P5.4 / §P5.5 + DATA_CONTRACTS §1.11（bids 表）+ BUSINESS_RULES
+§1.5（每次拍卖 N 条 bid，每个候选机器人 1 条）。
 
 事务边界：add 不 commit，由 dispatch_service 在 start_auction 同事务中提交。
-
-P5.4 仅实现 save_many（拍卖一次性写入所有候选 bid，避免循环 add+flush 的额
-外往返）；P5.5 GET /dispatch/auctions/{id} 含 bids 详情时再追加 find_by_auction。
 """
 from __future__ import annotations
 
+from uuid import UUID
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dispatch import Bid
@@ -31,3 +31,16 @@ class BidRepository:
         self.session.add_all(bids)
         await self.session.flush()
         return bids
+
+    async def find_by_auction(self, auction_id: UUID) -> list[Bid]:
+        """GET /dispatch/auctions/{id} 含 bids 详情。
+
+        排序：bid_value DESC（与 idx_bids_auction 索引同向，前端默认按出价高低
+        渲染）。
+        """
+        stmt = (
+            select(Bid)
+            .where(Bid.auction_id == auction_id)
+            .order_by(Bid.bid_value.desc())
+        )
+        return list((await self.session.execute(stmt)).scalars().all())

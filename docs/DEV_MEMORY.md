@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P5 调度算法**（P5.1~P5.4 已落地，拍卖闭环跑通）  
-当前任务：P5.5 拍卖 REST 接口（BUILD_ORDER §P5.5）  
-最近完成：P5.4 拍卖编排服务（`app/services/dispatch_service.py` DispatchService.start_auction(task_id, *, algorithm=None) 全流程：取任务 → 取 25 active 机器人 + 最新 robot_state + active 分配计数 → 合并构造 RobotEvalInput/TaskEvalInput → RuleEngine.filter → 全失败时写 Auction(FAILED) + auction.failed → 否则 compute_full_bid 每对 → 写 Auction(OPEN) + Bid×N → algorithm.solve → 有 winner 时更新 Auction(CLOSED, winner, decision_latency_ms) + 写 TaskAssignment + transit task PENDING→ASSIGNED → commit 后发 auction.started → bid_submitted×N → completed；DispatchSettings 全局算法单例（默认 HUNGARIAN，可被 set_algorithm 切换 + algorithm 参数显式覆盖）；事件总线 4 个 auction.* relay 加入 event_bridge；新增 AuctionRepository / BidRepository + TaskAssignmentRepository.count_active_by_robot_bulk；99/99 自检全绿）（2026-05-04）  
-下一任务：P5.5 拍卖 REST 接口（POST /dispatch/auction + GET/POST /dispatch/algorithm + GET /dispatch/auctions[/{id}]，对照 API_SPEC §4）  
+当前阶段：**P5 调度算法**（P5.1~P5.5 已落地，拍卖闭环 + REST 接口对外）  
+当前任务：P5.6 HITL 改派（BUILD_ORDER §P5.6）  
+最近完成：P5.5 拍卖 REST 接口（`app/api/v1/dispatch.py` 5 路由：POST /dispatch/auction（task:create）+ GET /dispatch/algorithm（task:read）+ POST /dispatch/algorithm（algorithm:switch HITL，写 human_interventions + 发 dispatch.algorithm_changed → commander+admin 两房间）+ GET /dispatch/auctions（分页 + task_id/algorithm/start_time/end_time 过滤）+ GET /dispatch/auctions/{id}（含 bids 按 bid_value DESC）；schemas/dispatch.py 追加 AuctionRead / BidRead / AuctionTriggerRequest / AlgorithmSwitchRequest / AlgorithmSwitchResponse / AlgorithmInfoResponse + AlgorithmName Literal；AuctionRepository.find_paginated + BidRepository.find_by_auction；DispatchService 追加 list_auctions / get_auction_with_bids / switch_algorithm（HITL 同事务，commit 失败回滚全局算法）；event_bridge 加 dispatch.algorithm_changed → 双房间转推；77/77 自检全绿）（2026-05-09）  
+下一任务：P5.6 HITL 改派（POST /dispatch/reassign，BUSINESS_RULES §4.3.3 7 步：加锁 → 任务状态校验 → RuleEngine.check 新机器人 → before_state → 释放原 assignment + 创建新 → after_state → 写 intervention → WS 双事件）  
 
 > 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 
@@ -95,6 +95,42 @@
 ---
 
 ## 已完成任务
+
+### P5.5 — 拍卖 REST 接口（2026-05-09）
+
+- 任务：P5.5（BUILD_ORDER §P5.5）
+- 执行工具：Claude Code
+- 修改类型：feat（新增 dispatch router + schemas/repos/service 扩展 + WS 双房间转推）
+- 涉及文件：
+  - `backend/app/api/v1/dispatch.py`（新增）：5 路由，按 API_SPEC §4 字面
+  - `backend/app/api/router.py`（修改）：include dispatch router
+  - `backend/app/schemas/dispatch.py`（扩展）：6 新 schemas + AlgorithmName Literal
+  - `backend/app/repositories/auction.py`（扩展）：find_paginated（task_id / algorithm / 时间窗 / 分页，按 started_at DESC）
+  - `backend/app/repositories/bid.py`（扩展）：find_by_auction（按 bid_value DESC）
+  - `backend/app/services/dispatch_service.py`（扩展）：list_auctions / get_auction_with_bids / switch_algorithm + _validate_reason + _auction_not_found
+  - `backend/app/ws/event_bridge.py`（修改）：追加 dispatch.algorithm_changed → commander + admin 两房间转推（一次 publish 触发两次 push_event）
+- 关键设计：
+  - **5 路由按 API_SPEC §4 字面对齐**：path / status_code / 权限矩阵 / 错误码全部一致；POST /dispatch/auction 直接调 DispatchService.start_auction，响应附带本次 bids 数组（同事务已 flush，前端「触发即看到全貌」）。
+  - **AlgorithmName Literal**：与 DATA_CONTRACTS auctions.algorithm + KNOWN_ALGORITHMS frozenset 一一对应，schema 层 422_VALIDATION_FAILED_001 拦截未知名；service 层 `_validate_reason` + `KNOWN_ALGORITHMS` 兜底防绕过 schema 直接调 service 的路径。
+  - **HITL 算法切换 commit 失败回滚全局**：先 set_algorithm（内存切换）→ 写 intervention → commit；commit 失败 except 块把全局算法切回 previous，避免「DB 没记但内存已改」的不一致。这一点比 cancel_task 复杂（cancel 没有「内存全局」要回滚）。
+  - **dispatch.algorithm_changed 双房间**：bridge 一个 handler 调 push_event 两次（commander + admin），每次注入新 event_id / timestamp；前端任一房间订阅都能收到。WS_EVENTS §5 字面要求双房间。
+  - **AuctionRead.bids 字段**：列表接口（GET /dispatch/auctions）返回 `[]`（避免 N+1 输出）；详情（GET /dispatch/auctions/{id}）和 POST /dispatch/auction 返回完整 bids 列表，与 DATA_CONTRACTS §5 一致。
+  - **BidRead.bid_value / vision_boost field_validator**：DB 列为 Numeric，asyncpg 返回 Decimal；Pydantic v2 不会自动转 float，加 `field_validator(mode='before')` 显式 `float(v)`。
+  - **范围聚焦**：本任务**仅** REST 5 个；POST /dispatch/reassign 留 P5.6（HITL 改派 7 步流程独立完整）；GET /dispatch/auctions 不含 reassign 历史，专注 auction 数据。
+- 测试验证：
+  - 77/77 自检全绿（临时脚本 `_check_p55.py`，通过后已删除；真实 DB + httpx ASGITransport + sio.emit 捕获）：
+    - B GET /dispatch/algorithm 4 项（commander 200 + default + available 3 + admin 也能读）
+    - A POST /dispatch/auction 18 项（401 + admin 403 + 404 不存在 + 409 COMPLETED + 201 happy + AuctionRead 6 字段 + bids 数组 + bid 7 字段 + breakdown 嵌套 2 字段 + WS 5 事件序列）
+    - D GET /dispatch/auctions 8 项（401 + 200 分页 + items/total/at-least-1 + list item bids=[] + task_id 过滤 + algorithm 过滤 + 不匹配 task_id 返回 0）
+    - E GET /dispatch/auctions/{id} 4 项（404 + 200 detail + bids 数 + bids 按 bid_value DESC）
+    - C POST /dispatch/algorithm 24 项（401 + admin 403 + 422 reason < 5 + 422 algorithm Literal + 200 happy + previous/current/intervention_id + 全局生效 + GET 反映 + intervention 4 字段持久化 + WS 双房间 + payload 7 字段 + payload 3 值断言）
+- 环境补装：无；已有依赖足够。
+- Git 提交：见 GIT_LOG.md
+- 遗留问题：
+  - BUILD_ORDER §P5.5 ✅；§P5.6 HITL 改派下一步实现，会复用 RuleEngine.check 校验新机器人 + 同款 intervention 模式。
+  - vision_boost 真实接入仍待 P6.1；当前 dispatch_service 硬编码 nearby_survivor_count=0。
+- 下一步建议：
+  - 进入 P5.6：先看 BUSINESS_RULES §4.3.3 7 步伪代码 + ReassignRequest schema + 409_ROBOT_INELIGIBLE_001 错误码；接 task.reassigned + intervention.recorded 双 WS 事件。
 
 ### P5.4 — 拍卖编排服务（2026-05-04）
 

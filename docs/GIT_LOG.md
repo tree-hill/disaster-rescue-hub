@@ -24,6 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-09 — P5.5
+
+- 任务：P5.5 拍卖 REST 接口（5 路由 + HITL 算法切换）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P5.5 dispatch REST routes + HITL algorithm switch
+- Commit hash：（待回填）
+- 是否 push：是（待执行）
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/api/v1/dispatch.py（新增）：POST /auction（task:create，返回含 bids 的 AuctionRead 201）+ GET /algorithm（task:read，{current, available}）+ POST /algorithm（algorithm:switch HITL，返回 {previous, current, intervention_id}）+ GET /auctions（分页 + task_id/algorithm/start_time/end_time 过滤）+ GET /auctions/{id}（含 bids 按 bid_value DESC）
+  - backend/app/api/router.py（修改）：include dispatch router
+  - backend/app/schemas/dispatch.py（扩展）：AuctionTriggerRequest / AlgorithmSwitchRequest / AlgorithmSwitchResponse / AlgorithmInfoResponse / BidRead / AuctionRead + AlgorithmName Literal；BidRead bid_value/vision_boost field_validator 把 Decimal 转 float
+  - backend/app/repositories/auction.py（扩展）：find_paginated（task_id/algorithm/时间窗/分页，按 started_at DESC，与 idx_auctions_task 同向）
+  - backend/app/repositories/bid.py（扩展）：find_by_auction（按 bid_value DESC）
+  - backend/app/services/dispatch_service.py（扩展）：list_auctions / get_auction_with_bids / switch_algorithm（HITL 写 intervention 同事务，commit 失败 except 块回滚内存全局算法 set_algorithm(previous)）+ _validate_reason + _auction_not_found 错误工厂
+  - backend/app/ws/event_bridge.py（修改）：追加 dispatch.algorithm_changed handler，commander + admin 两房间各 push_event 一次
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：移位 + 追加 P5.5 完成记录
+- 自检：77/77 全绿（B GET algorithm 4 + A POST auction 18 + D GET list 8 + E GET detail 4 + C POST switch 24，覆盖 401/403/404/409/422/200/201 全错误码 + AuctionRead/BidRead 字段契约 + WS 链路 5 事件 + dispatch.algorithm_changed 双房间 + intervention DB 持久化），临时脚本 `_check_p55.py` 验证后删除
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-04 — P5.4
 
 - 任务：P5.4 拍卖编排服务（dispatch_service.start_auction 全流程）

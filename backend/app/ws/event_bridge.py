@@ -45,6 +45,16 @@ async def _relay_auction_failed(payload: dict[str, Any]) -> None:
     await push_event("auction.failed", payload, room="commander")
 
 
+async def _relay_dispatch_algorithm_changed(payload: dict[str, Any]) -> None:
+    """HITL 算法切换 → commander + admin 两房间（WS_EVENTS §5）。
+
+    push_event 每次注入新的 event_id / timestamp；前端通常只在 commander 或 admin
+    单房间订阅，重复推送是双房间的契约本身（不是同房间重发，无去重压力）。
+    """
+    await push_event("dispatch.algorithm_changed", payload, room="commander")
+    await push_event("dispatch.algorithm_changed", payload, room="admin")
+
+
 def register_ws_relays(bus: EventBus) -> None:
     """订阅本任务范围内的 WS 转推 handler。subscribe 自带去重，幂等。"""
     bus.subscribe("task.created", _relay_task_created)
@@ -54,3 +64,5 @@ def register_ws_relays(bus: EventBus) -> None:
     bus.subscribe("auction.bid_submitted", _relay_auction_bid_submitted)
     bus.subscribe("auction.completed", _relay_auction_completed)
     bus.subscribe("auction.failed", _relay_auction_failed)
+    # P5.5 HITL 算法切换（commander + admin 两房间）
+    bus.subscribe("dispatch.algorithm_changed", _relay_dispatch_algorithm_changed)
