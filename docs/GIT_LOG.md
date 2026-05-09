@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P6.9 mock perception tick on RobotAgent (has_yolo + configurable rate)
-- Commit hash：（待回填）
+- Commit hash：007bb32
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
