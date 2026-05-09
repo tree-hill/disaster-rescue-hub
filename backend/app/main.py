@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 
 from app.agents.manager import get_agent_manager
 from app.api.router import api_router
+from app.communication.blackboard import get_blackboard
 from app.core.config import settings
 from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
@@ -24,7 +25,7 @@ from app.services.dispatch_trigger import (
 )
 from app.ws import handlers as ws_handlers
 from app.ws.broadcaster import get_broadcaster
-from app.ws.event_bridge import register_ws_relays
+from app.ws.event_bridge import register_blackboard_relays, register_ws_relays
 from app.ws.server import SOCKETIO_PATH, sio
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
     bus = get_event_bus()
     register_ws_relays(bus)
+    register_blackboard_relays(get_blackboard())
     if settings.dispatch_auto_trigger_enabled:
         register_auto_trigger(bus)
     await bus.start()

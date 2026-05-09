@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections import deque
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -119,6 +121,11 @@ class Blackboard:
         self._subscribers: list[BlackboardSubscriber] = []
         # 锁保护内存 dict + subscribers 列表的并发改写；读不加锁（dict 读原子）。
         self._lock: asyncio.Lock | None = None
+        # P6.3 stats 追踪（GET /blackboard/stats）：
+        # - _write_times：每次 set() 推一次时间戳，throughput_per_min 用 60s 滑窗
+        # - _fuse_latencies_ms：fuse() 调用 fusion.fuse_inputs 的耗时（毫秒），avg
+        self._write_times: deque[datetime] = deque(maxlen=2000)
+        self._fuse_latencies_ms: deque[float] = deque(maxlen=200)
 
     def _get_lock(self) -> asyncio.Lock:
         # asyncio.Lock 必须在 running loop 内创建；singleton 跨 pytest event loop 时
@@ -176,11 +183,12 @@ class Blackboard:
 
         async with self._get_lock():
             self._entries[key] = snap
+            self._write_times.append(now)
 
         # 落库异步发起；不等其结果，与「内存主」语义一致。
         asyncio.create_task(self._persist_async(snap))
 
-        # 通知订阅者（P6.3 / P6.6 接入）。
+        # 通知订阅者（P6.3 WS push / P6.6 alerts 等）。
         await self._notify_subscribers(snap)
 
         return snap
@@ -248,7 +256,9 @@ class Blackboard:
             timestamp=existing.updated_at,
             value=existing.value,
         )
+        t0 = time.perf_counter()
         fused_value, fused_conf, fused_from = fuse_inputs([existing_input, new_input])
+        self._fuse_latencies_ms.append((time.perf_counter() - t0) * 1000.0)
 
         return await self.set(
             key=key,
@@ -404,12 +414,52 @@ class Blackboard:
             )
         return len(expired_keys), db_deleted
 
+    # ---------- 统计（GET /blackboard/stats，P6.3）----------
+
+    def stats(self) -> dict[str, Any]:
+        """黑板运行时统计，对照 API_SPEC §5 GET /blackboard/stats。
+
+        - total_entries：未过期的内存条目数
+        - by_type：按 value['type'] 分组计数（仅未过期条目）
+        - active_subscribers：订阅 callback 数
+        - avg_fusion_latency_ms：最近 N 次 fuse 平均（无样本返回 0.0）
+        - throughput_per_min：最近 60s 内 set() 次数（不含被 INV-5 拒掉的）
+        """
+        now = _now_utc()
+        total = 0
+        by_type: dict[str, int] = {}
+        for snap in self._entries.values():
+            if snap.is_expired(now=now):
+                continue
+            total += 1
+            t = snap.value.get("type") if isinstance(snap.value, dict) else None
+            if isinstance(t, str):
+                by_type[t] = by_type.get(t, 0) + 1
+
+        avg_lat = 0.0
+        if self._fuse_latencies_ms:
+            avg_lat = sum(self._fuse_latencies_ms) / len(self._fuse_latencies_ms)
+
+        cutoff = now - timedelta(seconds=60)
+        # deque 按写入顺序追加，从尾向前数即可；为简单起见做一次过滤计数
+        throughput = sum(1 for ts in self._write_times if ts >= cutoff)
+
+        return {
+            "total_entries": total,
+            "by_type": by_type,
+            "active_subscribers": len(self._subscribers),
+            "avg_fusion_latency_ms": float(avg_lat),
+            "throughput_per_min": float(throughput),
+        }
+
     # ---------- 测试辅助 ----------
 
     def reset_for_tests(self) -> None:
-        """仅测试用：清空内存 + subscribers。DB 不动。"""
+        """仅测试用：清空内存 + subscribers + stats deques。DB 不动。"""
         self._entries.clear()
         self._subscribers.clear()
+        self._write_times.clear()
+        self._fuse_latencies_ms.clear()
 
 
 # ---------- 进程单例访问器 ----------

@@ -48,7 +48,7 @@ class BlackboardEntryRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    id: Optional[UUID] = None  # 内存主路径下，DB 落库回填前可能为 None
     key: str
     value: BlackboardValue
     confidence: float
@@ -56,3 +56,13 @@ class BlackboardEntryRead(BaseModel):
     fused_from: list[FusionSource] = Field(default_factory=list)
     expires_at: Optional[datetime] = None
     updated_at: datetime
+
+
+class BlackboardStats(BaseModel):
+    """GET /blackboard/stats 响应。对照 API_SPEC §5。"""
+
+    total_entries: int
+    by_type: dict[str, int]
+    active_subscribers: int
+    avg_fusion_latency_ms: float
+    throughput_per_min: float

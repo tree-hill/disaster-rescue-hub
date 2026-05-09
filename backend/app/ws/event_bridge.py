@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.communication.blackboard import Blackboard, BlackboardEntrySnapshot
 from app.core.event_bus import EventBus
 from app.ws.events import push_event
 
@@ -83,3 +84,33 @@ def register_ws_relays(bus: EventBus) -> None:
     # P5.6 HITL 改派（commander 业务 + admin 审计）
     bus.subscribe("task.reassigned", _relay_task_reassigned)
     bus.subscribe("intervention.recorded", _relay_intervention_recorded)
+
+
+# ---------- P6.3 黑板 WS 转推 ----------
+
+
+async def _relay_blackboard_updated(snap: BlackboardEntrySnapshot) -> None:
+    """Blackboard.subscribe 回调 → push_event('blackboard.updated', ...).
+
+    payload 字段对照 WS_EVENTS §6 blackboard.updated（key / value / confidence /
+    source_robot_id / is_fused / fusion_source_count）。
+    """
+    await push_event(
+        "blackboard.updated",
+        {
+            "key": snap.key,
+            "value": snap.value,
+            "confidence": float(snap.confidence),
+            "source_robot_id": (
+                str(snap.source_robot_id) if snap.source_robot_id is not None else None
+            ),
+            "is_fused": bool(snap.is_fused),
+            "fusion_source_count": len(snap.fused_from),
+        },
+        room="commander",
+    )
+
+
+def register_blackboard_relays(blackboard: Blackboard) -> None:
+    """订阅黑板写入 → WS commander 房间。subscribe 自带去重，幂等。"""
+    blackboard.subscribe(_relay_blackboard_updated)

@@ -24,6 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-09 — P6.3
+
+- 任务：P6.3 黑板 REST + WS
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P6.3 blackboard REST (entries / stats) + WS blackboard.updated relay
+- Commit hash：（待回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/api/v1/blackboard.py（新增）：三 GET 路由 + _snapshot_to_read 适配器 —— /entries 内存 query(type/key_prefix/min_confidence/include_expired) + 切片分页 + Page[BlackboardEntryRead]；/entries/{key:path} 含 include_expired query，404_BLACKBOARD_KEY_NOT_FOUND_001；/stats 调 Blackboard.stats() → BlackboardStats；全 require_permission("blackboard:read")
+  - backend/app/schemas/blackboard.py（修改）：加 BlackboardStats（total_entries/by_type/active_subscribers/avg_fusion_latency_ms/throughput_per_min）；BlackboardEntryRead.id 改 Optional[UUID]（兼容内存条目落库前 db_id=None）
+  - backend/app/communication/blackboard.py（修改）：加 _write_times deque(maxlen=2000) + _fuse_latencies_ms deque(maxlen=200)；set() 入锁内 push _write_times；fuse() 调 fuse_inputs 前后 perf_counter 计入延迟；新增 stats() 方法（total_entries/by_type 排除过期 + active_subscribers + 平均延迟 + 60s 滑窗 throughput）；reset_for_tests 清空两 deque
+  - backend/app/api/router.py（修改）：include v1_blackboard.router
+  - backend/app/ws/event_bridge.py（修改）：加 _relay_blackboard_updated(snap)（payload 6 字段：key/value/confidence/source_robot_id/is_fused/fusion_source_count，commander 房间）+ register_blackboard_relays(blackboard) 订阅；幂等
+  - backend/app/main.py（修改）：lifespan startup register_blackboard_relays(get_blackboard()) 紧跟 register_ws_relays
+  - scripts/seed.py（修改）：commander/admin/observer 三角色加 blackboard:read；已 re-seed
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：P6.3 完成移位；下一任务 P6.4
+- 自检：35/35 全绿（A entries 8：401 / commander 200 / prefix 过滤 total=3 / type=fire 2 / min_confidence=0.8 2 / page_size=1 分页 / 集合相等；B entries/{key} 7：happy 200 / confidence/value 字段 / 不存在 404 + 错误码 / 已过期 404 / include_expired=true 200；C stats 8：200 / total/by_type/throughput/avg_lat/active_subs 字段 / admin 也能读；D WS 11：set 触发 1 次 + payload 6 字段 / fuse 后 is_fused=True + count>=2 / register 幂等；E seed 1：commander 角色含 blackboard:read）；脚本验收后删除；pytest 12/12 无回归 3.17s
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P6.2
 
 - 任务：P6.2 信息融合

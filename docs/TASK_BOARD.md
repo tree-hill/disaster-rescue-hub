@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P6 视觉感知（P6.1~P6.2 完成）  
-当前任务：P6.3 黑板 REST + WS（BUILD_ORDER §P6.3）  
+当前阶段：P6 视觉感知（P6.1~P6.3 完成）  
+当前任务：P6.4 YOLOv8 数据集准备（BUILD_ORDER §P6.4）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P6.2 信息融合完成（fusion.py 纯函数 + Blackboard.fuse 调 fuse_inputs；33/33 自检全绿，pytest 12/12 无回归）。  
+备注：P6.3 黑板 REST + WS 完成（3 GET 路由 + WS blackboard.updated relay + seed 加 blackboard:read 三角色；35/35 自检全绿，pytest 12/12 无回归）。  
 
 ---
 
@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P6.3 黑板 REST + WS（BUILD_ORDER §P6.3）：GET /blackboard/entries[/{key}] + GET /blackboard/stats + WS blackboard.updated
+- [ ] P6.4 YOLOv8 数据集准备（BUILD_ORDER §P6.4）：下载 AIDER 数据集 + scripts/prepare_aider.py 拆分 train/val/test
 
 ### In Progress
 
@@ -52,6 +52,7 @@
 
 ### Done
 
+- [x] P6.3 黑板 REST + WS：api/v1/blackboard.py 三 GET 路由（/entries 过滤+分页 + /entries/{key:path} 含 include_expired 404_BLACKBOARD_KEY_NOT_FOUND_001 + /stats），全 require_permission("blackboard:read") 数据源走内存 Blackboard live state；schemas/blackboard.py 加 BlackboardStats（total_entries/by_type/active_subscribers/avg_fusion_latency_ms/throughput_per_min）+ BlackboardEntryRead.id Optional；Blackboard 加 _write_times deque(2000) 60s 滑窗 throughput + _fuse_latencies_ms deque(200) 平均 + stats() 方法；ws/event_bridge.py 加 _relay_blackboard_updated（payload 6 字段 commander 房间）+ register_blackboard_relays(blackboard) 幂等；api/router.py include + main.py lifespan 注册；scripts/seed.py commander/admin/observer 三角色加 blackboard:read 并 re-seed；35/35 自检全绿（A 8 + B 7 + C 8 + D 11 + E 1）；pytest 12/12 无回归 3.17s（2026-05-09，Claude Code）
 - [x] P6.2 信息融合：communication/fusion.py（weighted_average 校验长度+sum>0 报 ValueError + resolve_conflict 时间 DESC+conf 平手 + fuse_inputs 主入口 → winner 同 type 加权 position/area_m2/detected_count(int 取整)/intensity max conf 投票/自由扩展保留 + loser weight=0 审计 + altitude_m/heading_deg 保留 + fused_confidence=max）；Blackboard.fuse 重写调 fuse_inputs（existing 作为单 FusionInput + 新写入合并；首次 fuse 等价 set+fused_from weight=1）；INV-5 仍守；33/33 自检全绿（A wavg 4 + B resolve 2 + C 同 type 加权 8 + D 类型冲突 5 + E 自由扩展 2 + F 增量融合 8 + G 类型冲突场景 3 + H INV-5 1；脚本验收后删除）；pytest 12/12 无回归 3.13s（2026-05-09，Claude Code）
 - [x] P6.1 黑板基础设施：schemas/blackboard.py（BlackboardValue/FusionSource/BlackboardEntryRead）+ repositories/blackboard.py（save/find_latest_by_key/find_active/delete_expired）+ communication/blackboard.py Blackboard 单例（内存 dict 主 + asyncio.create_task 异步落库 + INV-5 静默拒写 + TTL 三级优先级 + get/set/fuse/query/query_by_proximity/subscribe/cleanup_expired，haversine_km 复用 rule_engine）+ services/blackboard_cleanup.py BlackboardCleanupScanner 60s 一轮（仿 PendingAuctionScanner，interval<=0 no-op + start/stop 幂等）+ core/config.py blackboard_cleanup_interval_sec=60.0 + main.py lifespan 起停；32/32 自检全绿（A set/get+INV-5 4，B TTL 4，C query/proximity 3，D fuse 4，E subscribe 3，F cleanup 6，G DB 持久化 2，H scanner 生命周期 6；脚本验收后删除）；pytest 12/12 无回归（2026-05-09，Claude Code）
 - [x] P5.8 跑通所有测试用例：`backend/tests/algorithms/conftest.py` 落地 ALGORITHM_TESTCASES §0.2 4 台 base_robots fixtures（含 USV-001 15% 电量被 R3 过滤）+ blackboard_with_survivor (count=1) + `_r/_t/by_code` 助手 + generate_robot/generate_task 5×5 网格生成器；`tests/algorithms/test_dispatch_algorithms.py` 10 个测试函数 TC-1（基础 1 任务 1 候选 Hungarian） / TC-2（USV 低电量 + 其他 missing_sensor 全过滤 → eligible=[]） / TC-3（rescue_kit payload 仅 UGV-001 合格 + missing_payload=2 + low_battery=1） / TC-4（两 UAV 距离权重，UAV-001 distance.weighted 严格大） / TC-5（论文核心 vision_boost 1.5 + final_bid==base_score×1.5） / TC-6（UGV has_yolo=False 不加成 + UAV 加成胜出） / TC-7（mock 出价矩阵 Hungarian 28 vs Greedy 22 + h_result=={t1:r2,t2:r1,t3:r3} + g_result=={t1:r1,t2:r2,t3:r3}） / TC-8（全 <20% 电量 → eligible=[] + algo 返回 {}） / TC-9（8×8 Hungarian std ≤ Greedy std，pstdev 不依赖 numpy 断言） / TC-10（25×10 Hungarian < 2 s NFR）；`tests/e2e/conftest.py` function-scoped autouse fixture（engine.dispose + EventBus.reset + register_auto_trigger + bus.start + DB cleanup by E2E_TASK_PREFIX="T-8888"/E2E_ROBOT_PREFIX="UAV-E2E"，teardown 反序）+ httpx ASGITransport client + commander_headers（复用 commander001 + create_access_token）+ small_circle_target_area / seed_e2e_robot / wait_until 助手；`tests/e2e/test_dispatch_e2e.py` TC-E2E-1（POST /tasks → auto-trigger → 10s 内 ASSIGNED + auction CLOSED+winner_robot_id+decision_latency_ms<2000 + active assignment auction_id 关联 + 手动 transit ASSIGNED→EXECUTING(started_at 置位)→COMPLETED(completed_at 置位)） / TC-E2E-2（POST /tasks → 自动 ASSIGNED → 找出实际中标 robot 选另一个作 target → monkeypatch bus.publish 包 real_publish 抓事件 → POST /dispatch/reassign → DB 旧 assignment is_active=False+released_at + 新 active.auction_id IS NULL + intervention before/after_state 5 字段 + assigned_robot_ids[new] + algorithm_used=='MANUAL_OVERRIDE' + WS task.reassigned 9 字段+intervention.recorded 6 字段）；venv 装 pytest 8.0.2 + pytest-asyncio 0.23.8；`python -m pytest tests -v` 12/12 全绿 2.46s（2026-05-09，Claude Code）

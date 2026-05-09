@@ -9,10 +9,10 @@
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  
-当前阶段：**P6 视觉感知**（P6.1~P6.2 完成，下一任务 P6.3 黑板 REST + WS）  
-当前任务：P6.3 黑板 REST + WS（BUILD_ORDER §P6.3）  
-最近完成：P6.2 信息融合（`app/communication/fusion.py` 三个纯函数：weighted_average(values, weights) 严格校验长度+sum>0；resolve_conflict(inputs) 时间 DESC + conf DESC 平手；fuse_inputs(inputs) 主入口 → (value, confidence, fused_from)，winner 同 type 走 confidence 加权 → position.lat/lng + area_m2 + detected_count(int 取整)，intensity 按 max conf 投票，自由扩展字段保留 max conf winner 的，fused_confidence=max，fused_from 含 winner 归一化权重(和=1) + loser weight=0 审计 + altitude_m/heading_deg max conf 保留；改 `Blackboard.fuse` 调 fuse_inputs：existing 作为单 FusionInput（confidence/timestamp/value 取自 snapshot）+ 新写入合并；首次 fuse 等价 set + fused_from=[新 source weight=1]；INV-5 仍守；33/33 自检全绿（A wavg 4 + B resolve 2 + C 同 type 加权 8 + D 类型冲突 5 + E 自由扩展 2 + F 增量融合 8 + G 类型冲突场景 3 + H INV-5 1；脚本验收后删除）；pytest 12/12 无回归 3.13s（2026-05-09）  
-下一任务：P6.3 黑板 REST + WS（BUILD_ORDER §P6.3：GET /blackboard/entries[/{key}] + GET /blackboard/stats + WS blackboard.updated）  
+当前阶段：**P6 视觉感知**（P6.1~P6.3 完成，下一任务 P6.4 YOLOv8 数据集准备）  
+当前任务：P6.4 YOLOv8 数据集准备（BUILD_ORDER §P6.4）  
+最近完成：P6.3 黑板 REST + WS（`api/v1/blackboard.py` 三路由：GET /blackboard/entries（type/key_prefix/min_confidence/include_expired/page/page_size 过滤+ Page[BlackboardEntryRead]）+ GET /blackboard/entries/{key:path}（404_BLACKBOARD_KEY_NOT_FOUND_001）+ GET /blackboard/stats，全 require_permission("blackboard:read")，数据源走内存 Blackboard.query/get/stats live state；`schemas/blackboard.py` 加 BlackboardStats（total_entries/by_type/active_subscribers/avg_fusion_latency_ms/throughput_per_min）+ BlackboardEntryRead.id Optional 兼容内存条目落库前；`Blackboard` 加 _write_times deque(maxlen=2000) 60s 滑窗 throughput + _fuse_latencies_ms deque(maxlen=200) 平均；set/fuse 各自计入；`stats()` 方法实现；`ws/event_bridge.py` 加 _relay_blackboard_updated（payload 6 字段：key/value/confidence/source_robot_id/is_fused/fusion_source_count）+ register_blackboard_relays(blackboard) 订阅 commander 房间；`api/router.py` include v1_blackboard.router；`main.py` lifespan startup register_blackboard_relays(get_blackboard())；`scripts/seed.py` 给 commander/admin/observer 三角色加 blackboard:read 并已 re-seed；35/35 自检全绿（A entries 8 + B entries/{key} 7 + C stats 8 + D WS relay 11 + E seed 1；脚本验收后删除）；pytest 12/12 无回归 3.17s（2026-05-09）  
+下一任务：P6.4 YOLOv8 数据集准备（BUILD_ORDER §P6.4：下载 AIDER 数据集 + scripts/prepare_aider.py 拆分 train/val/test）  
 
 > 环境补装记录（2026-05-04）：venv 仅装了基础 web/db 包，BUILD_ORDER §P5.3 需要的 numpy 1.26.4 + scipy 1.12.0 已按 pyproject.toml 字面约束补装；其他 P5+ 仍可能涉及 ultralytics / torch / opencv，按需再装。
 

@@ -67,17 +67,24 @@ ROLES_DEF = [
             "robot:recall",
             "robot:manage",
             "algorithm:switch",
+            "blackboard:read",
         ],
     },
     {
         "name": "admin",
         "description": "管理员：用户与系统管理",
-        "permissions": ["task:read", "robot:read", "user:manage", "system:admin"],
+        "permissions": [
+            "task:read",
+            "robot:read",
+            "user:manage",
+            "system:admin",
+            "blackboard:read",
+        ],
     },
     {
         "name": "observer",
         "description": "观察员：只读",
-        "permissions": ["task:read", "robot:read"],
+        "permissions": ["task:read", "robot:read", "blackboard:read"],
     },
 ]
 
