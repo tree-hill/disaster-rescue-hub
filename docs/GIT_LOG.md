@@ -24,6 +24,32 @@
 
 ## 提交记录
 
+### 2026-05-10 — P7.3 阶段 A
+
+- 任务：P7.3 阶段 A — Login + Cockpit + AlertCenter（按 01-06 设计标准统一）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P7.3 stage A — Login/Cockpit/AlertCenter (prototype 01-06 design baseline)
+- Commit hash：（commit 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - frontend/src/styles/global.css（重写）：注入 prototype_01 完整设计令牌（21 CSS variable + panel/badge-*/btn-*/progress-bar/scroll-thin/pulse-dot/kpi-num/nav-item/input-field/app-table 工具类）
+  - frontend/index.html（修改）：preconnect Google Fonts 加载 Inter+JetBrains Mono
+  - frontend/src/components/common/AppShell.tsx（新增）：顶导 7 项 NavLink + sessionInfo + Bell（→/alerts）+ 用户头像下拉登出 + fullHeight prop
+  - frontend/src/api/auth.ts（新增）：login(POST /auth/login) + fetchMe(GET /auth/me)
+  - frontend/src/api/situation.ts（新增）：fetchKpi + KPISnapshot 类型
+  - frontend/src/api/alerts.ts（新增）：listAlerts/getAlert/acknowledgeAlert/ignoreAlert + AlertRead/Page<T>/AlertListParams
+  - frontend/src/pages/Login.tsx（重写）：1:1 复刻 prototype_03 左右双栏；登录流程 POST /auth/login → fetchMe → setSession → wsConnect → navigate /cockpit
+  - frontend/src/pages/Cockpit.tsx（重写）：1:1 复刻 prototype_01 三栏 + KPI 顶条接 GET /situation/kpi + WS kpi.snapshot 实时刷新；中央地图 SVG 800×600 复刻；左右栏 mock 数据；改派按钮占位 alert P7.4
+  - frontend/src/pages/AlertCenter.tsx（重写）：按 01-06 风格统一（不沿用 prototype_10 青色）；GET /alerts list 7 列（severity/time/type/source/desc/status/actions）+ POST ack/ignore + WS alert.* 自动 refresh + 详情 DetailPanel 含 yolo_detection/sla_alert/影响范围（占位）+ 操作按钮（派遣灭火/通知应急/实时画面占位）
+- 自检：`npx tsc --noEmit` exit=0；`npm run build` 通过 15.63s 1573 modules dist/index.js 365.39 kB gzip 115.71 kB；后端 pytest 12/12 无回归（未变更）
+- 占位（待用户决定）：(a) Cockpit 机器人/任务列表 mock，(b) Cockpit 地图静态 SVG，(c) 改派按钮 + 派遣灭火/通知应急/实时画面 → alert，(d) AlertCenter 详情面板「火点面积/扩散方向/距最近水源」alerts.payload 无强约束 → "—"，(e) Login 角色选择仅 UI 提示
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-10 — P7.2
 
 - 任务：P7.2 前端基础设施

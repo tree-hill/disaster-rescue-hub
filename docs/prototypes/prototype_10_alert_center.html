@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>告警中心 - 救灾中枢</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#0a0e1a;color:#e8eaf0;min-height:100vh;}
+  .nav{background:#0f1424;border-bottom:1px solid #1f2942;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;}
+  .nav-left{display:flex;align-items:center;gap:32px;}
+  .logo{font-size:18px;font-weight:700;color:#5dd2ff;letter-spacing:1px;}
+  .nav-menu{display:flex;gap:24px;}
+  .nav-menu a{color:#8a92a8;text-decoration:none;font-size:14px;padding:6px 12px;border-radius:4px;}
+  .nav-menu a.active{color:#5dd2ff;background:rgba(93,210,255,.1);}
+  .nav-right{display:flex;align-items:center;gap:16px;font-size:13px;color:#8a92a8;}
+  .container{padding:24px;}
+  .breadcrumb{font-size:12px;color:#5e6478;margin-bottom:16px;}
+  .breadcrumb span{color:#5dd2ff;}
+  .stat-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px;}
+  .stat-card{background:#0f1424;border:1px solid #1f2942;border-radius:8px;padding:16px;}
+  .stat-card.danger{background:linear-gradient(135deg,rgba(255,138,138,.08),rgba(255,138,138,.02));border-color:rgba(255,138,138,.3);}
+  .stat-label{font-size:12px;color:#8a92a8;margin-bottom:8px;display:flex;justify-content:space-between;}
+  .stat-value{font-size:24px;font-weight:700;}
+  .stat-value.danger{color:#ff8a8a;}
+  .stat-sub{font-size:11px;color:#5e6478;margin-top:4px;}
+  .toolbar{background:#0f1424;border:1px solid #1f2942;border-radius:8px;padding:14px 16px;display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+  .search{background:#1a2138;border:1px solid #2a3350;border-radius:6px;padding:8px 14px;color:#e8eaf0;font-size:13px;outline:none;width:240px;}
+  select{background:#1a2138;border:1px solid #2a3350;color:#e8eaf0;padding:8px 12px;border-radius:6px;font-size:13px;outline:none;cursor:pointer;}
+  .btn{padding:8px 14px;border-radius:6px;border:none;cursor:pointer;font-size:12px;font-weight:500;}
+  .btn-secondary{background:transparent;border:1px solid #2a3350;color:#8a92a8;}
+  .btn-secondary:hover{border-color:#5dd2ff;color:#5dd2ff;}
+  .btn-primary{background:linear-gradient(135deg,#5dd2ff,#3a8fd1);color:#0a0e1a;font-weight:600;}
+  .btn-spacer{flex:1;}
+
+  .layout{display:grid;grid-template-columns:1fr 420px;gap:16px;}
+
+  .alert-list{background:#0f1424;border:1px solid #1f2942;border-radius:10px;overflow:hidden;}
+  .list-row{display:grid;grid-template-columns:50px 80px 100px 110px 100px 1fr 90px 130px;gap:10px;padding:14px 16px;border-bottom:1px solid #1a2138;font-size:13px;align-items:center;cursor:pointer;transition:background .15s;}
+  .list-row:hover{background:#141a2e;}
+  .list-row.selected{background:rgba(93,210,255,.08);}
+  .list-header{background:#0a0e1a;color:#5e6478;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px;cursor:default;}
+  .list-header:hover{background:#0a0e1a;}
+  .list-row.severity-critical{border-left:3px solid #ff5555;}
+  .list-row.severity-warn{border-left:3px solid #ffaa66;}
+  .list-row.severity-info{border-left:3px solid #5dd2ff;}
+
+  .severity{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;}
+  .sev-critical{background:rgba(255,85,85,.15);color:#ff8a8a;border:1px solid rgba(255,85,85,.3);}
+  .sev-warn{background:rgba(255,170,102,.15);color:#ffaa66;border:1px solid rgba(255,170,102,.3);}
+  .sev-info{background:rgba(93,210,255,.15);color:#5dd2ff;border:1px solid rgba(93,210,255,.3);}
+
+  .timestamp{font-family:monospace;color:#a8b0c2;font-size:12px;}
+  .alert-type{color:#e8eaf0;font-weight:500;}
+  .source{color:#ffd866;font-family:monospace;font-size:12px;}
+  .description{color:#a8b0c2;font-size:12px;}
+  .description .yolo-badge{display:inline-block;padding:1px 6px;background:rgba(93,210,255,.15);color:#5dd2ff;border-radius:3px;font-size:10px;margin-right:6px;}
+
+  .status-tag{font-size:11px;font-weight:600;}
+  .status-tag.pending{color:#ff8a8a;}
+  .status-tag.confirmed{color:#a3d077;}
+  .status-tag.ignored{color:#5e6478;}
+
+  .actions a{color:#5dd2ff;text-decoration:none;margin-right:8px;font-size:12px;}
+  .actions a.danger{color:#ff8a8a;}
+  .actions a:hover{text-decoration:underline;}
+
+  /* 右侧详情面板 */
+  .detail-panel{background:#0f1424;border:1px solid #1f2942;border-radius:10px;padding:20px;height:fit-content;position:sticky;top:24px;}
+  .detail-header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:1px solid #1f2942;margin-bottom:16px;}
+  .detail-title{font-size:16px;font-weight:600;}
+  .detail-id{font-size:11px;color:#5e6478;font-family:monospace;margin-top:4px;}
+  .detail-section{margin-bottom:18px;}
+  .section-title{font-size:11px;color:#5e6478;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;}
+  .detail-row{display:flex;justify-content:space-between;padding:7px 0;font-size:12px;border-bottom:1px solid #1a2138;}
+  .detail-row:last-child{border-bottom:none;}
+  .detail-label{color:#8a92a8;}
+  .detail-value{color:#e8eaf0;font-weight:500;text-align:right;}
+
+  .source-card{background:linear-gradient(135deg,rgba(93,210,255,.08),rgba(58,143,209,.02));border:1px solid rgba(93,210,255,.25);border-radius:8px;padding:14px;}
+  .source-card .section-title{color:#5dd2ff;}
+
+  .impact-card{background:linear-gradient(135deg,rgba(255,170,102,.06),rgba(255,170,102,.02));border:1px solid rgba(255,170,102,.2);border-radius:8px;padding:14px;}
+
+  .detail-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:18px;}
+  .detail-actions button{padding:11px;font-size:12px;}
+
+  .pagination{display:flex;justify-content:center;align-items:center;gap:8px;padding:16px;color:#8a92a8;font-size:13px;}
+  .pagination button{background:transparent;border:1px solid #2a3350;color:#8a92a8;padding:6px 12px;border-radius:4px;cursor:pointer;}
+  .pagination button.active{background:#5dd2ff;color:#0a0e1a;border-color:#5dd2ff;}
+</style>
+</head>
+<body>
+<div class="nav">
+  <div class="nav-left">
+    <div class="logo">⚡ 救灾中枢</div>
+    <div class="nav-menu">
+      <a href="#">指挥工作台</a>
+      <a href="#">机器人管理</a>
+      <a href="#">任务管理</a>
+      <a href="#" class="active">态势感知</a>
+      <a href="#">复盘分析</a>
+      <a href="#">系统管理</a>
+    </div>
+  </div>
+  <div class="nav-right"><span>👤 commander001</span></div>
+</div>
+<div class="container">
+  <div class="breadcrumb">态势感知 / <span>告警中心</span></div>
+  <div class="stat-grid">
+    <div class="stat-card danger"><div class="stat-label">待处理 ⚠</div><div class="stat-value danger">7</div><div class="stat-sub">P0:1 / P1:6</div></div>
+    <div class="stat-card"><div class="stat-label">已确认</div><div class="stat-value" style="color:#a3d077;">23</div><div class="stat-sub">本次救援</div></div>
+    <div class="stat-card"><div class="stat-label">已忽略</div><div class="stat-value" style="color:#5e6478;">5</div><div class="stat-sub">重复/误报</div></div>
+    <div class="stat-card"><div class="stat-label">今日总数</div><div class="stat-value">35</div><div class="stat-sub">↑ 12%</div></div>
+    <div class="stat-card"><div class="stat-label">平均响应</div><div class="stat-value">47<span style="font-size:14px;color:#5e6478;"> s</span></div><div class="stat-sub">P95: 102 s</div></div>
+    <div class="stat-card"><div class="stat-label">规则数 <span style="cursor:pointer;color:#5dd2ff;">⚙</span></div><div class="stat-value">12</div><div class="stat-sub">11 已启用</div></div>
+  </div>
+
+  <div class="toolbar">
+    <input class="search" placeholder="🔍 关键字搜索...">
+    <select><option>所有级别</option><option>严重</option><option>警告</option><option>信息</option></select>
+    <select><option>所有类型</option><option>火灾</option><option>电量低</option><option>故障</option><option>幸存者</option></select>
+    <select><option>所有来源</option><option>UAV</option><option>UGV</option><option>USV</option></select>
+    <select><option>所有状态</option><option>待处理</option><option>已确认</option><option>已忽略</option></select>
+    <select><option>📅 今日</option><option>近 7 天</option><option>近 30 天</option><option>自定义</option></select>
+    <div class="btn-spacer"></div>
+    <button class="btn btn-secondary">批量确认</button>
+    <button class="btn btn-secondary">📥 导出</button>
+  </div>
+
+  <div class="layout">
+    <div>
+      <div class="alert-list">
+        <div class="list-row list-header">
+          <span><input type="checkbox"></span>
+          <span>级别</span>
+          <span>时间</span>
+          <span>类型</span>
+          <span>来源</span>
+          <span>描述</span>
+          <span>状态</span>
+          <span>操作</span>
+        </div>
+
+        <div class="list-row severity-critical selected">
+          <span><input type="checkbox" checked></span>
+          <span><span class="severity sev-critical">● 严重</span></span>
+          <span class="timestamp">14:32:18</span>
+          <span class="alert-type">火灾告警</span>
+          <span class="source">UAV-003</span>
+          <span class="description"><span class="yolo-badge">YOLO</span>森林 B 区检测到火点(置信度 0.96),范围约 120 m²</span>
+          <span class="status-tag pending">❗ 待处理</span>
+          <span class="actions"><a>确认</a><a>忽略</a><a>详情</a></span>
+        </div>
+
+        <div class="list-row severity-warn">
+          <span><input type="checkbox"></span>
+          <span><span class="severity sev-warn">● 警告</span></span>
+          <span class="timestamp">14:30:55</span>
+          <span class="alert-type">电量低</span>
+          <span class="source">USV-001</span>
+          <span class="description">水面机器人 USV-001 电量降至 12%,建议召回</span>
+          <span class="status-tag pending">❗ 待处理</span>
+          <span class="actions"><a>确认</a><a class="danger">召回</a></span>
+        </div>
+
+        <div class="list-row severity-warn">
+          <span><input type="checkbox"></span>
+          <span><span class="severity sev-warn">● 警告</span></span>
+          <span class="timestamp">14:28:42</span>
+          <span class="alert-type">通信中断</span>
+          <span class="source">UGV-005</span>
+          <span class="description">地面机器人 UGV-005 心跳超时(15s 未响应)</span>
+          <span class="status-tag pending">❗ 待处理</span>
+          <span class="actions"><a>确认</a><a>详情</a></span>
+        </div>
+
+        <div class="list-row severity-info">
+          <span><input type="checkbox"></span>
+          <span><span class="severity sev-info">● 信息</span></span>
+          <span class="timestamp">14:25:10</span>
+          <span class="alert-type">发现幸存者</span>
+          <span class="source">UAV-001</span>
+          <span class="description"><span class="yolo-badge">YOLO</span>废墟 A 区检测到幸存者(置信度 0.92),已自动派任务</span>
+          <span class="status-tag confirmed">✓ 已确认</span>
+          <span class="actions"><a>详情</a></span>
+        </div>
+
+        <div class="list-row severity-warn">
+          <span><input type="checkbox"></span>
+          <span><span class="severity sev-warn">● 警告</span></span>
+          <span class="timestamp">14:18:42</span>
+          <span class="alert-type">任务超时</span>
+          <span class="source">T-2024-005</span>
+          <span class="description">任务 T-2024-005 执行时间已超过 SLA 阈值 8 分钟</span>
+          <span class="status-tag ignored">— 已忽略</span>
+          <span class="actions"><a>详情</a></span>
+        </div>
+
+        <div class="list-row severity-info">
+          <span><input type="checkbox"></span>
+          <span><span class="severity sev-info">● 信息</span></span>
+          <span class="timestamp">14:15:22</span>
+          <span class="alert-type">发现幸存者</span>
+          <span class="source">UAV-001</span>
+          <span class="description"><span class="yolo-badge">YOLO</span>废墟 A 区检测到幸存者(置信度 0.88)</span>
+          <span class="status-tag confirmed">✓ 已确认</span>
+          <span class="actions"><a>详情</a></span>
+        </div>
+
+        <div class="list-row severity-info">
+          <span><input type="checkbox"></span>
+          <span><span class="severity sev-info">● 信息</span></span>
+          <span class="timestamp">14:12:08</span>
+          <span class="alert-type">倒塌建筑</span>
+          <span class="source">UAV-005</span>
+          <span class="description"><span class="yolo-badge">YOLO</span>识别到倒塌建筑(置信度 0.81),已标注地图</span>
+          <span class="status-tag confirmed">✓ 已确认</span>
+          <span class="actions"><a>详情</a></span>
+        </div>
+
+        <div class="list-row severity-warn">
+          <span><input type="checkbox"></span>
+          <span><span class="severity sev-warn">● 警告</span></span>
+          <span class="timestamp">14:08:15</span>
+          <span class="alert-type">电量低</span>
+          <span class="source">UAV-007</span>
+          <span class="description">无人机 UAV-007 电量 18%,建议返航充电</span>
+          <span class="status-tag confirmed">✓ 已确认</span>
+          <span class="actions"><a>详情</a></span>
+        </div>
+
+        <div class="pagination">
+          <button>‹</button><button class="active">1</button><button>2</button><button>3</button><button>4</button><button>›</button>
+          <span style="margin-left:16px;">共 35 条</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-panel">
+      <div class="detail-header">
+        <div>
+          <div class="detail-title">🔥 火灾告警</div>
+          <div class="detail-id">ALERT-2024-018</div>
+        </div>
+        <span class="severity sev-critical">● P0 严重</span>
+      </div>
+
+      <div class="detail-section">
+        <div class="section-title">⏱ 基础信息</div>
+        <div class="detail-row"><span class="detail-label">触发规则</span><span class="detail-value" style="font-family:monospace;font-size:11px;">fire_high_conf</span></div>
+        <div class="detail-row"><span class="detail-label">触发时间</span><span class="detail-value">14:32:18</span></div>
+        <div class="detail-row"><span class="detail-label">持续时长</span><span class="detail-value" style="color:#ff8a8a;">00:01:23</span></div>
+      </div>
+
+      <div class="detail-section source-card">
+        <div class="section-title">🤖 数据来源(YOLOv8)</div>
+        <div class="detail-row"><span class="detail-label">源机器人</span><span class="detail-value" style="color:#ffd866;">UAV-003</span></div>
+        <div class="detail-row"><span class="detail-label">数据类型</span><span class="detail-value">视觉识别</span></div>
+        <div class="detail-row"><span class="detail-label">识别类别</span><span class="detail-value">fire</span></div>
+        <div class="detail-row"><span class="detail-label">置信度</span><span class="detail-value" style="color:#5dd2ff;font-weight:700;">0.96</span></div>
+        <div class="detail-row"><span class="detail-label">位置</span><span class="detail-value" style="font-family:monospace;font-size:11px;">120.62, 30.18</span></div>
+      </div>
+
+      <div class="detail-section impact-card" style="margin-top:14px;">
+        <div class="section-title" style="color:#ffaa66;">⚠ 影响范围</div>
+        <div class="detail-row"><span class="detail-label">火点面积</span><span class="detail-value">约 120 m²</span></div>
+        <div class="detail-row"><span class="detail-label">扩散方向</span><span class="detail-value">东北</span></div>
+        <div class="detail-row"><span class="detail-label">距最近水源</span><span class="detail-value">1.2 km</span></div>
+        <div class="detail-row"><span class="detail-label">关联任务</span><span class="detail-value" style="color:#5dd2ff;">T-2024-002</span></div>
+        <div class="detail-row"><span class="detail-label">附近机器人</span><span class="detail-value">UAV-003、USV-002</span></div>
+      </div>
+
+      <div class="detail-actions">
+        <button class="btn btn-secondary">忽略</button>
+        <button class="btn btn-primary" style="background:linear-gradient(135deg,#ff8a8a,#cc4444);color:#fff;">确认告警</button>
+        <button class="btn btn-secondary" style="grid-column:span 2;">🚀 派遣灭火任务</button>
+        <button class="btn btn-secondary">📞 通知应急队</button>
+        <button class="btn btn-secondary">🎥 查看实时画面</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

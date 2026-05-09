@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>救灾中枢 · 管理后台</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --bg-primary: #0F1419; --bg-secondary: #1A1F2E; --bg-tertiary: #252B3D; --bg-elevated: #2D3548;
+    --border-subtle: #2A3142; --border-default: #3A4258; --border-strong: #4D5670;
+    --text-primary: #E6EAF2; --text-secondary: #9BA3B8; --text-tertiary: #5C6580;
+    --accent-primary: #3B82F6; --success: #10B981; --warning: #F59E0B; --danger: #EF4444; --info: #06B6D4;
+    --robot-aerial: #60A5FA; --robot-ground: #A78BFA; --robot-marine: #22D3EE;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg-primary); color: var(--text-primary);
+    font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    margin: 0; overflow-x: hidden;
+  }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+  .panel { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 8px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-success { background: rgba(16,185,129,0.15); color: var(--success); }
+  .badge-info { background: rgba(6,182,212,0.15); color: var(--info); }
+  .badge-warning { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .badge-danger { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .btn-primary { background: var(--accent-primary); color: white; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; }
+  .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-default); padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .btn-icon { padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+  .btn-icon:hover { background: var(--bg-tertiary); }
+  .nav-item { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .nav-item-active { background: var(--accent-primary); color: white; }
+  .nav-item-inactive { color: var(--text-secondary); }
+  .nav-item-inactive:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+  .menu-item { padding: 10px 16px; border-radius: 6px; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .menu-item:hover { background: var(--bg-tertiary); }
+  .menu-active { background: var(--accent-primary); color: white; }
+  .menu-active:hover { background: #2563EB; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 12px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); background: var(--bg-tertiary); border-bottom: 1px solid var(--border-default); }
+  td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border-subtle); }
+  tr:hover td { background: var(--bg-tertiary); }
+  .row-fault td { background: rgba(239,68,68,0.05); }
+  .row-fault:hover td { background: rgba(239,68,68,0.1); }
+</style>
+</head>
+<body>
+
+<div class="min-h-screen flex flex-col">
+
+  <!-- 顶部导航 -->
+  <header class="h-14 flex items-center justify-between px-6 border-b" style="background: var(--bg-secondary); border-color: var(--border-subtle);">
+    <div class="flex items-center gap-8">
+      <div class="flex items-center gap-2">
+        <i data-lucide="shield-check" class="w-6 h-6" style="color: var(--accent-primary);"></i>
+        <span class="text-base font-bold">救灾中枢</span>
+      </div>
+      <nav class="flex items-center gap-1">
+        <span class="nav-item nav-item-inactive">指挥工作台</span>
+        <span class="nav-item nav-item-inactive">机器人管理</span>
+        <span class="nav-item nav-item-inactive">任务管理</span>
+        <span class="nav-item nav-item-inactive">态势感知</span>
+        <span class="nav-item nav-item-inactive">复盘中心</span>
+        <span class="nav-item nav-item-active">管理后台</span>
+      </nav>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold" style="background: var(--warning);">A</div>
+      <span class="text-sm">admin001</span>
+    </div>
+  </header>
+
+  <!-- 主体 -->
+  <div class="flex-1 flex overflow-hidden">
+
+    <!-- 左侧菜单 -->
+    <aside class="w-60 panel m-3 mr-0 flex flex-col p-3 rounded-lg">
+      <div class="text-xs font-semibold mb-3 px-2" style="color: var(--text-tertiary);">系统配置</div>
+      <nav class="space-y-1">
+        <a class="menu-item menu-active">
+          <i data-lucide="bot" class="w-4 h-4"></i>
+          <span class="flex-1">机器人注册</span>
+          <span class="text-xs mono">25</span>
+        </a>
+        <a class="menu-item">
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span class="flex-1">用户管理</span>
+          <span class="text-xs mono" style="color: var(--text-tertiary);">8</span>
+        </a>
+        <a class="menu-item">
+          <i data-lucide="key-round" class="w-4 h-4"></i>
+          <span class="flex-1">角色权限</span>
+          <span class="text-xs mono" style="color: var(--text-tertiary);">2</span>
+        </a>
+        <a class="menu-item" style="color: var(--warning);">
+          <i data-lucide="file-text" class="w-4 h-4"></i>
+          <span class="flex-1">审计日志 ★</span>
+          <span class="badge badge-warning" style="padding: 1px 6px; font-size: 10px;">156</span>
+        </a>
+        <a class="menu-item">
+          <i data-lucide="map" class="w-4 h-4"></i>
+          <span class="flex-1">场景剧本</span>
+          <span class="text-xs mono" style="color: var(--text-tertiary);">2</span>
+        </a>
+        <a class="menu-item">
+          <i data-lucide="settings-2" class="w-4 h-4"></i>
+          <span>系统配置</span>
+        </a>
+      </nav>
+
+      <div class="mt-auto pt-4 border-t" style="border-color: var(--border-subtle);">
+        <div class="px-2 py-3 rounded-lg text-xs" style="background: var(--bg-tertiary);">
+          <div class="font-semibold mb-1.5" style="color: var(--text-secondary);">系统信息</div>
+          <div class="space-y-1" style="color: var(--text-tertiary);">
+            <div class="flex justify-between"><span>版本</span><span class="mono">v1.0.0</span></div>
+            <div class="flex justify-between"><span>运行时间</span><span class="mono">12d 5h</span></div>
+            <div class="flex justify-between"><span>DB 大小</span><span class="mono">237 MB</span></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右侧内容 -->
+    <main class="flex-1 p-3 flex flex-col gap-3 overflow-hidden">
+
+      <!-- 面包屑与页面标题 -->
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="text-xs flex items-center gap-1.5" style="color: var(--text-tertiary);">
+            <span>管理后台</span>
+            <i data-lucide="chevron-right" class="w-3 h-3"></i>
+            <span style="color: var(--text-secondary);">机器人注册</span>
+          </div>
+          <h1 class="text-xl font-bold mt-1">机器人注册</h1>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn-ghost flex items-center gap-1.5"><i data-lucide="upload" class="w-3.5 h-3.5"></i> 批量导入</button>
+          <button class="btn-primary flex items-center gap-1.5"><i data-lucide="plus" class="w-4 h-4"></i> 注册新机器人</button>
+        </div>
+      </div>
+
+      <!-- 统计卡 -->
+      <div class="grid grid-cols-4 gap-3">
+        <div class="panel p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(59,130,246,0.15);">
+            <i data-lucide="bot" class="w-5 h-5" style="color: var(--accent-primary);"></i>
+          </div>
+          <div>
+            <div class="text-xs" style="color: var(--text-secondary);">总数</div>
+            <div class="text-xl font-bold mono">25</div>
+          </div>
+        </div>
+        <div class="panel p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(96,165,250,0.15);">
+            <i data-lucide="plane" class="w-5 h-5" style="color: var(--robot-aerial);"></i>
+          </div>
+          <div>
+            <div class="text-xs" style="color: var(--text-secondary);">无人机</div>
+            <div class="text-xl font-bold mono">10</div>
+          </div>
+        </div>
+        <div class="panel p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(167,139,250,0.15);">
+            <i data-lucide="bot" class="w-5 h-5" style="color: var(--robot-ground);"></i>
+          </div>
+          <div>
+            <div class="text-xs" style="color: var(--text-secondary);">地面</div>
+            <div class="text-xl font-bold mono">10</div>
+          </div>
+        </div>
+        <div class="panel p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-lg flex items-center justify-center" style="background: rgba(34,211,238,0.15);">
+            <i data-lucide="anchor" class="w-5 h-5" style="color: var(--robot-marine);"></i>
+          </div>
+          <div>
+            <div class="text-xs" style="color: var(--text-secondary);">水面</div>
+            <div class="text-xl font-bold mono">5</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 工具栏 + 表格 -->
+      <div class="panel flex-1 flex flex-col overflow-hidden">
+
+        <!-- 工具栏 -->
+        <div class="px-4 py-3 border-b flex items-center gap-3" style="border-color: var(--border-subtle);">
+          <div class="relative flex-1 max-w-xs">
+            <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5" style="color: var(--text-tertiary);"></i>
+            <input type="text" placeholder="搜索编号 / 名称 / 型号..." class="w-full pl-10 pr-3 py-2 text-sm rounded-lg" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+          </div>
+          <select class="px-3 py-2 text-sm rounded-lg" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+            <option>类型: 全部</option>
+            <option>无人机</option>
+            <option>地面</option>
+            <option>水面</option>
+          </select>
+          <select class="px-3 py-2 text-sm rounded-lg" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+            <option>状态: 全部</option>
+            <option>启用</option>
+            <option>禁用</option>
+            <option>故障</option>
+          </select>
+          <select class="px-3 py-2 text-sm rounded-lg" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+            <option>编队: 全部</option>
+            <option>Alpha</option>
+            <option>Bravo</option>
+            <option>Charlie</option>
+          </select>
+          <div class="flex-1"></div>
+          <button class="btn-ghost flex items-center gap-1.5"><i data-lucide="filter-x" class="w-3.5 h-3.5"></i> 清空</button>
+          <button class="btn-ghost flex items-center gap-1.5"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> 刷新</button>
+        </div>
+
+        <!-- 表格 -->
+        <div class="flex-1 overflow-auto">
+          <table>
+            <thead>
+              <tr>
+                <th class="w-8"><input type="checkbox" class="rounded"></th>
+                <th>编号</th>
+                <th>名称</th>
+                <th>类型</th>
+                <th>型号</th>
+                <th>能力</th>
+                <th>编队</th>
+                <th>状态</th>
+                <th>注册时间</th>
+                <th class="text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="checkbox" class="rounded"></td>
+                <td class="mono font-semibold">UAV-001</td>
+                <td>侦察无人机1号</td>
+                <td><span class="badge" style="background: rgba(96,165,250,0.15); color: var(--robot-aerial);">AERIAL</span></td>
+                <td class="mono" style="color: var(--text-secondary);">DJI-M300</td>
+                <td><code class="px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary);">{thermal, camera, ...}</code></td>
+                <td>Alpha</td>
+                <td><span class="badge badge-success">● 启用</span></td>
+                <td class="mono" style="color: var(--text-tertiary);">2026-04-01</td>
+                <td class="text-right">
+                  <span class="btn-icon"><i data-lucide="edit-2" class="w-4 h-4 inline" style="color: var(--accent-primary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="power-off" class="w-4 h-4 inline" style="color: var(--text-secondary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="trash-2" class="w-4 h-4 inline" style="color: var(--danger);"></i></span>
+                </td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" class="rounded"></td>
+                <td class="mono font-semibold">UAV-002</td>
+                <td>搜救无人机2号</td>
+                <td><span class="badge" style="background: rgba(96,165,250,0.15); color: var(--robot-aerial);">AERIAL</span></td>
+                <td class="mono" style="color: var(--text-secondary);">DJI-M300</td>
+                <td><code class="px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary);">{thermal, signal_det, ...}</code></td>
+                <td>Alpha</td>
+                <td><span class="badge badge-success">● 启用</span></td>
+                <td class="mono" style="color: var(--text-tertiary);">2026-04-01</td>
+                <td class="text-right">
+                  <span class="btn-icon"><i data-lucide="edit-2" class="w-4 h-4 inline" style="color: var(--accent-primary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="power-off" class="w-4 h-4 inline" style="color: var(--text-secondary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="trash-2" class="w-4 h-4 inline" style="color: var(--danger);"></i></span>
+                </td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" class="rounded"></td>
+                <td class="mono font-semibold">GND-001</td>
+                <td>搜救机器人1号</td>
+                <td><span class="badge" style="background: rgba(167,139,250,0.15); color: var(--robot-ground);">GROUND</span></td>
+                <td class="mono" style="color: var(--text-secondary);">Spot-X</td>
+                <td><code class="px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary);">{life_det, gas, payload}</code></td>
+                <td>Bravo</td>
+                <td><span class="badge badge-success">● 启用</span></td>
+                <td class="mono" style="color: var(--text-tertiary);">2026-04-02</td>
+                <td class="text-right">
+                  <span class="btn-icon"><i data-lucide="edit-2" class="w-4 h-4 inline" style="color: var(--accent-primary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="power-off" class="w-4 h-4 inline" style="color: var(--text-secondary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="trash-2" class="w-4 h-4 inline" style="color: var(--danger);"></i></span>
+                </td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" class="rounded"></td>
+                <td class="mono font-semibold">GND-002</td>
+                <td>搜救机器人2号</td>
+                <td><span class="badge" style="background: rgba(167,139,250,0.15); color: var(--robot-ground);">GROUND</span></td>
+                <td class="mono" style="color: var(--text-secondary);">Spot-X</td>
+                <td><code class="px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary);">{life_det, gas, payload}</code></td>
+                <td>Bravo</td>
+                <td><span class="badge badge-success">● 启用</span></td>
+                <td class="mono" style="color: var(--text-tertiary);">2026-04-02</td>
+                <td class="text-right">
+                  <span class="btn-icon"><i data-lucide="edit-2" class="w-4 h-4 inline" style="color: var(--accent-primary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="power-off" class="w-4 h-4 inline" style="color: var(--text-secondary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="trash-2" class="w-4 h-4 inline" style="color: var(--danger);"></i></span>
+                </td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" class="rounded"></td>
+                <td class="mono font-semibold">MAR-001</td>
+                <td>水面侦察1号</td>
+                <td><span class="badge" style="background: rgba(34,211,238,0.15); color: var(--robot-marine);">MARINE</span></td>
+                <td class="mono" style="color: var(--text-secondary);">AquaBot-7</td>
+                <td><code class="px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary);">{sonar, water_temp}</code></td>
+                <td>Charlie</td>
+                <td><span class="badge badge-success">● 启用</span></td>
+                <td class="mono" style="color: var(--text-tertiary);">2026-04-03</td>
+                <td class="text-right">
+                  <span class="btn-icon"><i data-lucide="edit-2" class="w-4 h-4 inline" style="color: var(--accent-primary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="power-off" class="w-4 h-4 inline" style="color: var(--text-secondary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="trash-2" class="w-4 h-4 inline" style="color: var(--danger);"></i></span>
+                </td>
+              </tr>
+              <tr class="row-fault">
+                <td><input type="checkbox" class="rounded"></td>
+                <td class="mono font-semibold flex items-center gap-1.5">UAV-007 <i data-lucide="alert-triangle" class="w-3.5 h-3.5" style="color: var(--danger);"></i></td>
+                <td>侦察无人机7号</td>
+                <td><span class="badge" style="background: rgba(96,165,250,0.15); color: var(--robot-aerial);">AERIAL</span></td>
+                <td class="mono" style="color: var(--text-secondary);">DJI-M300</td>
+                <td><code class="px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary);">{thermal, camera, ...}</code></td>
+                <td>Alpha</td>
+                <td><span class="badge badge-danger">● 故障</span></td>
+                <td class="mono" style="color: var(--text-tertiary);">2026-04-01</td>
+                <td class="text-right">
+                  <span class="btn-icon"><i data-lucide="edit-2" class="w-4 h-4 inline" style="color: var(--accent-primary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="power" class="w-4 h-4 inline" style="color: var(--success);"></i></span>
+                  <span class="btn-icon"><i data-lucide="trash-2" class="w-4 h-4 inline" style="color: var(--danger);"></i></span>
+                </td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" class="rounded"></td>
+                <td class="mono font-semibold">MAR-002</td>
+                <td>水面侦察2号</td>
+                <td><span class="badge" style="background: rgba(34,211,238,0.15); color: var(--robot-marine);">MARINE</span></td>
+                <td class="mono" style="color: var(--text-secondary);">AquaBot-7</td>
+                <td><code class="px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary);">{sonar, water_temp}</code></td>
+                <td>Charlie</td>
+                <td><span class="badge badge-warning">● BIDDING</span></td>
+                <td class="mono" style="color: var(--text-tertiary);">2026-04-03</td>
+                <td class="text-right">
+                  <span class="btn-icon"><i data-lucide="edit-2" class="w-4 h-4 inline" style="color: var(--accent-primary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="power-off" class="w-4 h-4 inline" style="color: var(--text-secondary);"></i></span>
+                  <span class="btn-icon"><i data-lucide="trash-2" class="w-4 h-4 inline" style="color: var(--danger);"></i></span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="text-center text-xs py-3" style="color: var(--text-tertiary);">··· 第 8-25 条 ···</div>
+        </div>
+
+        <!-- 底栏 -->
+        <div class="px-4 py-3 border-t flex items-center justify-between" style="border-color: var(--border-subtle);">
+          <div class="flex items-center gap-3">
+            <span class="text-xs" style="color: var(--text-secondary);">已选 <span class="font-bold text-white">0</span> 条 | 共 25 条</span>
+            <div class="flex items-center gap-1.5">
+              <button class="btn-ghost" style="padding: 4px 10px;">启用</button>
+              <button class="btn-ghost" style="padding: 4px 10px;">禁用</button>
+              <button class="btn-ghost" style="padding: 4px 10px;">移动到编队</button>
+              <button class="btn-ghost" style="padding: 4px 10px; color: var(--danger); border-color: var(--danger);">删除</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 text-xs">
+            <button class="btn-ghost" style="padding: 4px 10px;"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>
+            <div class="flex items-center gap-1">
+              <button class="px-2.5 py-1 rounded font-bold" style="background: var(--accent-primary); color: white;">1</button>
+              <button class="px-2.5 py-1 rounded" style="color: var(--text-secondary);">2</button>
+              <button class="px-2.5 py-1 rounded" style="color: var(--text-secondary);">3</button>
+            </div>
+            <button class="btn-ghost" style="padding: 4px 10px;"><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
+            <select class="px-2 py-1 rounded text-xs" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+              <option>10 条/页</option>
+              <option>20 条/页</option>
+              <option>50 条/页</option>
+            </select>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>

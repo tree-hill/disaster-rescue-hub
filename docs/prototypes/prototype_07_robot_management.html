@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>机器人管理 - 救灾中枢</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#0a0e1a;color:#e8eaf0;min-height:100vh;}
+  .nav{background:#0f1424;border-bottom:1px solid #1f2942;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;}
+  .nav-left{display:flex;align-items:center;gap:32px;}
+  .logo{font-size:18px;font-weight:700;color:#5dd2ff;letter-spacing:1px;}
+  .nav-menu{display:flex;gap:24px;}
+  .nav-menu a{color:#8a92a8;text-decoration:none;font-size:14px;padding:6px 12px;border-radius:4px;transition:all .2s;}
+  .nav-menu a:hover{color:#e8eaf0;background:#1f2942;}
+  .nav-menu a.active{color:#5dd2ff;background:rgba(93,210,255,.1);}
+  .nav-right{display:flex;align-items:center;gap:16px;font-size:13px;color:#8a92a8;}
+  .nav-right .badge{padding:4px 10px;background:rgba(255,107,107,.15);border:1px solid rgba(255,107,107,.3);color:#ff8a8a;border-radius:12px;font-size:12px;}
+  .container{padding:24px;}
+  .breadcrumb{font-size:12px;color:#5e6478;margin-bottom:16px;}
+  .breadcrumb span{color:#5dd2ff;}
+  .stat-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px;}
+  .stat-card{background:#0f1424;border:1px solid #1f2942;border-radius:8px;padding:16px;}
+  .stat-label{font-size:12px;color:#8a92a8;margin-bottom:8px;}
+  .stat-value{font-size:24px;font-weight:700;color:#e8eaf0;}
+  .stat-value.warn{color:#ffaa66;}
+  .stat-value.danger{color:#ff8a8a;}
+  .stat-sub{font-size:11px;color:#5e6478;margin-top:4px;}
+  .toolbar{background:#0f1424;border:1px solid #1f2942;border-radius:8px;padding:14px 16px;display:flex;gap:12px;align-items:center;margin-bottom:16px;}
+  .search{flex:1;background:#1a2138;border:1px solid #2a3350;border-radius:6px;padding:8px 14px;color:#e8eaf0;font-size:13px;outline:none;max-width:300px;}
+  .search:focus{border-color:#5dd2ff;}
+  select{background:#1a2138;border:1px solid #2a3350;color:#e8eaf0;padding:8px 12px;border-radius:6px;font-size:13px;outline:none;cursor:pointer;}
+  .btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:500;transition:all .2s;}
+  .btn-primary{background:linear-gradient(135deg,#5dd2ff,#3a8fd1);color:#0a0e1a;font-weight:600;}
+  .btn-primary:hover{box-shadow:0 4px 16px rgba(93,210,255,.4);}
+  .btn-secondary{background:transparent;border:1px solid #2a3350;color:#8a92a8;}
+  .btn-secondary:hover{border-color:#5dd2ff;color:#5dd2ff;}
+  .btn-spacer{flex:1;}
+  .layout{display:grid;grid-template-columns:1fr 380px;gap:16px;}
+  .table-wrap{background:#0f1424;border:1px solid #1f2942;border-radius:8px;overflow:hidden;}
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:left;font-size:12px;color:#8a92a8;font-weight:500;padding:14px 12px;background:#0a0e1a;border-bottom:1px solid #1f2942;letter-spacing:.5px;}
+  td{padding:14px 12px;font-size:13px;border-bottom:1px solid #1a2138;}
+  tr{transition:background .15s;cursor:pointer;}
+  tr:hover{background:#141a2e;}
+  tr.selected{background:rgba(93,210,255,.08);}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}
+  .status-exec{background:#5dd2ff;box-shadow:0 0 8px #5dd2ff;}
+  .status-idle{background:#82b366;}
+  .status-fault{background:#ff5555;animation:pulse 1.5s infinite;}
+  .status-bid{background:#ffd866;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+  .battery{display:inline-flex;align-items:center;gap:6px;}
+  .battery-bar{width:50px;height:6px;background:#2a3350;border-radius:3px;overflow:hidden;}
+  .battery-fill{height:100%;border-radius:3px;}
+  .battery-high{background:#82b366;}
+  .battery-mid{background:#ffd866;}
+  .battery-low{background:#ff8a8a;}
+  .actions a{color:#5dd2ff;text-decoration:none;margin-right:10px;font-size:12px;}
+  .actions a:hover{text-decoration:underline;}
+  .actions a.danger{color:#ff8a8a;}
+  .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;background:rgba(93,210,255,.15);color:#5dd2ff;}
+  .tag-uav{background:rgba(93,210,255,.15);color:#5dd2ff;}
+  .tag-ugv{background:rgba(130,179,102,.15);color:#a3d077;}
+  .tag-usv{background:rgba(255,170,102,.15);color:#ffaa66;}
+  .panel{background:#0f1424;border:1px solid #1f2942;border-radius:8px;padding:18px;height:fit-content;position:sticky;top:24px;}
+  .panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #1f2942;}
+  .panel-title{font-size:15px;font-weight:600;}
+  .panel-id{font-size:11px;color:#5e6478;}
+  .info-section{margin-bottom:18px;}
+  .section-title{font-size:11px;color:#5e6478;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;}
+  .info-row{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid #1a2138;}
+  .info-label{color:#8a92a8;}
+  .info-value{color:#e8eaf0;font-weight:500;}
+  .capability-list{display:flex;flex-wrap:wrap;gap:6px;}
+  .cap-item{padding:4px 10px;background:#1a2138;border:1px solid #2a3350;border-radius:4px;font-size:11px;color:#a8b0c2;}
+  .panel-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;}
+  .panel-actions .btn{padding:10px;font-size:12px;}
+  .pagination{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px;color:#8a92a8;font-size:13px;}
+  .pagination button{background:transparent;border:1px solid #2a3350;color:#8a92a8;padding:6px 12px;border-radius:4px;cursor:pointer;}
+  .pagination button.active{background:#5dd2ff;color:#0a0e1a;border-color:#5dd2ff;}
+</style>
+</head>
+<body>
+<div class="nav">
+  <div class="nav-left">
+    <div class="logo">⚡ 救灾中枢</div>
+    <div class="nav-menu">
+      <a href="#">指挥工作台</a>
+      <a href="#" class="active">机器人管理</a>
+      <a href="#">任务管理</a>
+      <a href="#">态势感知</a>
+      <a href="#">复盘分析</a>
+      <a href="#">系统管理</a>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span class="badge">⚠ 1 故障</span>
+    <span>👤 commander001</span>
+    <span style="cursor:pointer;color:#5dd2ff;">退出</span>
+  </div>
+</div>
+<div class="container">
+  <div class="breadcrumb">机器人管理 / <span>设备列表</span></div>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-label">在线总数</div><div class="stat-value">25 / 25</div><div class="stat-sub">100% 在线率</div></div>
+    <div class="stat-card"><div class="stat-label">无人机</div><div class="stat-value" style="color:#5dd2ff;">10</div><div class="stat-sub">空中力量</div></div>
+    <div class="stat-card"><div class="stat-label">地面机器人</div><div class="stat-value" style="color:#a3d077;">10</div><div class="stat-sub">陆地搜救</div></div>
+    <div class="stat-card"><div class="stat-label">水面机器人</div><div class="stat-value" style="color:#ffaa66;">5</div><div class="stat-sub">水域救援</div></div>
+    <div class="stat-card"><div class="stat-label">故障数</div><div class="stat-value danger">1</div><div class="stat-sub">需要维护</div></div>
+    <div class="stat-card"><div class="stat-label">低电量</div><div class="stat-value warn">3</div><div class="stat-sub">建议召回</div></div>
+  </div>
+  <div class="toolbar">
+    <input class="search" placeholder="🔍 搜索机器人 ID / 名称">
+    <select><option>所有类型</option><option>无人机</option><option>地面</option><option>水面</option></select>
+    <select><option>所有状态</option><option>EXECUTING</option><option>IDLE</option><option>FAULT</option></select>
+    <select><option>所有编队</option><option>编队 A</option><option>编队 B</option><option>编队 C</option></select>
+    <div class="btn-spacer"></div>
+    <button class="btn btn-secondary">📥 批量导入</button>
+    <button class="btn btn-primary">+ 注册新机器人</button>
+  </div>
+  <div class="layout">
+    <div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th><input type="checkbox"></th><th>ID</th><th>名称</th><th>类型</th><th>状态</th><th>电量</th><th>位置</th><th>编队</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr class="selected"><td><input type="checkbox"></td><td><strong>UAV-001</strong></td><td>鹰眼-1</td><td><span class="tag tag-uav">无人机</span></td><td><span class="status-dot status-exec"></span>EXECUTING</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-high" style="width:78%"></div></div>78%</div></td><td>120.51, 30.21</td><td>A</td><td class="actions"><a>详情</a><a>编辑</a><a class="danger">召回</a></td></tr>
+            <tr><td><input type="checkbox"></td><td><strong>UAV-002</strong></td><td>鹰眼-2</td><td><span class="tag tag-uav">无人机</span></td><td><span class="status-dot status-bid"></span>BIDDING</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-high" style="width:85%"></div></div>85%</div></td><td>120.50, 30.20</td><td>A</td><td class="actions"><a>详情</a><a>编辑</a><a class="danger">召回</a></td></tr>
+            <tr><td><input type="checkbox"></td><td><strong>UGV-001</strong></td><td>搜救犬-1</td><td><span class="tag tag-ugv">地面</span></td><td><span class="status-dot status-idle"></span>IDLE</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-high" style="width:92%"></div></div>92%</div></td><td>120.48, 30.18</td><td>B</td><td class="actions"><a>详情</a><a>编辑</a><a class="danger">召回</a></td></tr>
+            <tr><td><input type="checkbox"></td><td><strong>UGV-002</strong></td><td>搜救犬-2</td><td><span class="tag tag-ugv">地面</span></td><td><span class="status-dot status-exec"></span>EXECUTING</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-mid" style="width:55%"></div></div>55%</div></td><td>120.49, 30.19</td><td>B</td><td class="actions"><a>详情</a><a>编辑</a><a class="danger">召回</a></td></tr>
+            <tr><td><input type="checkbox"></td><td><strong>UGV-003</strong></td><td>搜救犬-3</td><td><span class="tag tag-ugv">地面</span></td><td><span class="status-dot status-exec"></span>EXECUTING</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-high" style="width:71%"></div></div>71%</div></td><td>120.51, 30.21</td><td>A</td><td class="actions"><a>详情</a><a>编辑</a><a class="danger">召回</a></td></tr>
+            <tr><td><input type="checkbox"></td><td><strong>USV-001</strong></td><td>海星-1</td><td><span class="tag tag-usv">水面</span></td><td><span class="status-dot status-fault"></span>FAULT</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-low" style="width:12%"></div></div>12%</div></td><td>120.62, 30.18</td><td>C</td><td class="actions"><a>详情</a><a>修复</a><a class="danger">召回</a></td></tr>
+            <tr><td><input type="checkbox"></td><td><strong>USV-002</strong></td><td>海星-2</td><td><span class="tag tag-usv">水面</span></td><td><span class="status-dot status-idle"></span>IDLE</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-high" style="width:88%"></div></div>88%</div></td><td>120.61, 30.17</td><td>C</td><td class="actions"><a>详情</a><a>编辑</a><a class="danger">召回</a></td></tr>
+            <tr><td><input type="checkbox"></td><td><strong>UAV-003</strong></td><td>鹰眼-3</td><td><span class="tag tag-uav">无人机</span></td><td><span class="status-dot status-exec"></span>EXECUTING</td><td><div class="battery"><div class="battery-bar"><div class="battery-fill battery-mid" style="width:42%"></div></div>42%</div></td><td>120.62, 30.18</td><td>A</td><td class="actions"><a>详情</a><a>编辑</a><a class="danger">召回</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <button>‹</button><button class="active">1</button><button>2</button><button>3</button><button>4</button><button>›</button>
+        <span style="margin-left:16px;">共 25 条</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">鹰眼-1</div>
+          <div class="panel-id">UAV-001</div>
+        </div>
+        <span class="status-dot status-exec" style="width:12px;height:12px;"></span>
+      </div>
+      <div class="info-section">
+        <div class="section-title">基础信息</div>
+        <div class="info-row"><span class="info-label">型号</span><span class="info-value">DJI Matrice 300</span></div>
+        <div class="info-row"><span class="info-label">最大续航</span><span class="info-value">55 分钟</span></div>
+        <div class="info-row"><span class="info-label">最大速度</span><span class="info-value">23 m/s</span></div>
+        <div class="info-row"><span class="info-label">所属编队</span><span class="info-value">编队 A(空中组)</span></div>
+      </div>
+      <div class="info-section">
+        <div class="section-title">实时状态</div>
+        <div class="info-row"><span class="info-label">当前任务</span><span class="info-value" style="color:#5dd2ff;">T-2024-001</span></div>
+        <div class="info-row"><span class="info-label">电量</span><span class="info-value">78%</span></div>
+        <div class="info-row"><span class="info-label">信号强度</span><span class="info-value" style="color:#82b366;">良好(-58 dBm)</span></div>
+        <div class="info-row"><span class="info-label">最近心跳</span><span class="info-value">刚刚</span></div>
+      </div>
+      <div class="info-section">
+        <div class="section-title">能力清单</div>
+        <div class="capability-list">
+          <span class="cap-item">📷 4K 摄像头</span>
+          <span class="cap-item">🌡 红外热成像</span>
+          <span class="cap-item">📡 8 km 图传</span>
+          <span class="cap-item">🤖 YOLOv8 视觉</span>
+          <span class="cap-item">🛡 自主避障</span>
+        </div>
+      </div>
+      <div class="panel-actions">
+        <button class="btn btn-secondary">编辑配置</button>
+        <button class="btn btn-secondary">历史轨迹</button>
+        <button class="btn btn-secondary">故障日志</button>
+        <button class="btn btn-primary" style="background:linear-gradient(135deg,#ff8a8a,#cc4444);color:#fff;">紧急召回</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

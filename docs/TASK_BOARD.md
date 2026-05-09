@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P7 态势感知 + 前端原型（P7.1 + P7.2 完成；P7.3 待办）  
-当前任务：P7.3 6 大页面实现（BUILD_ORDER §P7.3）  
+当前阶段：P7 态势感知 + 前端原型（P7.1 + P7.2 + P7.3 部分页面完成；剩余 4 页待实装）  
+当前任务：P7.3 6 大页面实现（BUILD_ORDER §P7.3）—— Login + Cockpit + AlertCenter 已实装；RobotManagement / TaskManagement / Blackboard / Admin 待实装  
 任务来源：docs/BUILD_ORDER.md  
-备注：P7.2 前端基础设施完成（auth/ws Zustand store + ProtectedRoute + 6 路由 + 6 占位页 + axios 拦截器；tsc + vite build 全绿）。  
+备注：原型 01-06 用 #3B82F6 蓝主题 + Inter 字体 + 7 项菜单顶导，原型 07-10 风格不同 (#5dd2ff 青色) 已统一改为 01-06 标准。  
 
 ---
 
@@ -44,8 +44,8 @@
 
 ### To Do
 
-- [ ] P7.3 6 大页面实现（BUILD_ORDER §P7.3）：Login / Cockpit / RobotManagement / TaskManagement / Blackboard / AlertCenter / Admin
-- [ ] P7.4 改派弹窗（BUILD_ORDER §P7.4）
+- [ ] P7.3 剩余页面：RobotManagement（对照 prototype_07） / TaskManagement（对照 prototype_08） / Blackboard（对照 prototype_09） / Admin（对照 prototype_06）—— 都需以 01-06 设计标准统一
+- [ ] P7.4 改派弹窗（BUILD_ORDER §P7.4，对照 prototype_02）
 
 ### Deferred（用户独立完成）
 
@@ -57,6 +57,8 @@
 暂无。
 
 ### Done
+
+- [x] P7.3 阶段 A：Login + Cockpit + AlertCenter（对照 prototype_03/01/10，全部按 01-06 设计标准统一为 #3B82F6 蓝主题 + Inter + 7 项菜单顶导）：global.css 注入 prototype_01 完整设计令牌（21 个 CSS variable + panel/badge-*/btn-primary/btn-warning/btn-ghost/btn-icon/progress-bar/scroll-thin/pulse-dot/kpi-num/nav-item/input-field/app-table 工具类）；index.html preconnect Google Fonts 加载 Inter+JetBrains Mono；`components/common/AppShell.tsx` 顶导（shield-check logo + 7 项 NavLink + sessionInfo + 主题/通知/用户头像下拉登出）；`api/auth.ts` login + fetchMe；`api/situation.ts` fetchKpi；`api/alerts.ts` listAlerts/getAlert/acknowledgeAlert/ignoreAlert + AlertRead/Page<T>/AlertListParams 类型；Login 页 1:1 复刻 prototype_03（左侧装饰 grid 背景 + radial 渐变 + RadioTower 标题 + 3 个指标卡，右侧角色选择 + 用户名/密码/记住我/登录按钮，登录流程 POST /auth/login → setSession 临时 token → GET /auth/me 拿 user → setSession 全量 → wsConnect → navigate /cockpit）；Cockpit 页 1:1 复刻 prototype_01（KPI 顶条 6 卡接 GET /situation/kpi + WS 'kpi.snapshot' 实时刷新；左栏机器人编队 5 卡 + 类型 Tab + 搜索 + FAULT 卡片紧急召回；中央地图 SVG 800×600 网格+危险区+幸存者信号+任务网格+5 个机器人+轨迹+比例尺，工具栏 + 浮层图例；右栏任务/告警/日志 Tab + 创建按钮 + 4 任务卡 + 底部最近告警；改派按钮占位 alert P7.4）；AlertCenter 页接 P7.1 后端（GET /alerts list 支持 severity/type/status/search/page 过滤；点击行选中右侧详情面板；详情拆 yolo_detection / sla_alert / 影响范围占位；ack/ignore 走 POST；WS commander 房间订阅 alert.raised/acknowledged/ignored 自动 refresh；分页 ‹ N › 控件；导出/派遣灭火/通知应急/实时画面 4 个按钮占位；6 统计卡）；router 不变（已在 P7.2 注册）；tsc --noEmit exit=0；vite build 15.63s 1573 modules dist 365.39 kB gzip 115.71 kB（2026-05-10，Claude Code）
 
 - [x] P7.2 前端基础设施：`frontend/src/store/auth.ts` Zustand+persist(localStorage key=drh-auth) AuthUser/accessToken/refreshToken+setSession/clear/hasPermission/hasAnyRole；`frontend/src/store/ws.ts` Socket.IO 单例+reconnection(MAX_RECONNECT=5/1s起/封顶5s)+auth fn cb({token: useAuthStore.accessToken})+rooms 状态(重连后 emit 'subscribe' 重订)+addListener/subscribe/unsubscribe+auth_error 自动 clear+跳/login；`frontend/src/components/common/ProtectedRoute.tsx` 未登录→/login(state.from)，无权限→/cockpit；`frontend/src/router/index.tsx` /→/cockpit，/login，受保护组(/cockpit /robots /tasks /blackboard /alerts)，admin 组(/admin permission=system:admin)，*→/cockpit；`frontend/src/api/client.ts` baseURL='/api/v1'(VITE_API_BASE_URL 可覆盖)+request 注入 Bearer 来自 useAuthStore+401 clear+跳/login(避循环)；6 占位页(Cockpit/RobotManagement/TaskManagement/Blackboard/AlertCenter/Admin)；`frontend/src/vite-env.d.ts` ImportMetaEnv 声明 VITE_API_BASE_URL；`tsc --noEmit` exit=0；`npm run build` 1.80s 57 modules 214.67 kB（2026-05-10，Claude Code）
 

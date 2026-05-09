@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>救灾中枢 · 指挥工作台</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --bg-primary: #0F1419;
+    --bg-secondary: #1A1F2E;
+    --bg-tertiary: #252B3D;
+    --bg-elevated: #2D3548;
+    --border-subtle: #2A3142;
+    --border-default: #3A4258;
+    --border-strong: #4D5670;
+    --text-primary: #E6EAF2;
+    --text-secondary: #9BA3B8;
+    --text-tertiary: #5C6580;
+    --accent-primary: #3B82F6;
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
+    --info: #06B6D4;
+    --robot-aerial: #60A5FA;
+    --robot-ground: #A78BFA;
+    --robot-marine: #22D3EE;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    margin: 0;
+    overflow: hidden;
+  }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+  .panel { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 8px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-success { background: rgba(16,185,129,0.15); color: var(--success); }
+  .badge-info { background: rgba(6,182,212,0.15); color: var(--info); }
+  .badge-warning { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .badge-danger { background: rgba(239,68,68,0.15); color: var(--danger); }
+  .btn-primary { background: var(--accent-primary); color: white; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; transition: all 0.15s; }
+  .btn-primary:hover { background: #60A5FA; }
+  .btn-warning { background: var(--warning); color: white; padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; border: none; cursor: pointer; box-shadow: 0 0 12px rgba(245,158,11,0.3); }
+  .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-default); padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: all 0.15s; }
+  .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .progress-bar { height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent-primary), var(--success)); border-radius: 3px; transition: width 0.3s; }
+  .scroll-thin::-webkit-scrollbar { width: 6px; }
+  .scroll-thin::-webkit-scrollbar-track { background: transparent; }
+  .scroll-thin::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+  .pulse-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  .kpi-num { font-size: 24px; font-weight: 700; line-height: 1; }
+  .nav-item { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .nav-item-active { background: var(--accent-primary); color: white; }
+  .nav-item-inactive { color: var(--text-secondary); }
+  .nav-item-inactive:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+</style>
+</head>
+<body>
+
+<div class="h-screen flex flex-col">
+
+  <!-- 顶部导航 -->
+  <header class="h-14 flex items-center justify-between px-6 border-b" style="background: var(--bg-secondary); border-color: var(--border-subtle);">
+    <div class="flex items-center gap-8">
+      <div class="flex items-center gap-2">
+        <i data-lucide="shield-check" class="w-6 h-6" style="color: var(--accent-primary);"></i>
+        <span class="text-base font-bold">救灾中枢</span>
+      </div>
+      <nav class="flex items-center gap-1">
+        <span class="nav-item nav-item-active">指挥工作台</span>
+        <span class="nav-item nav-item-inactive">机器人管理</span>
+        <span class="nav-item nav-item-inactive">任务管理</span>
+        <span class="nav-item nav-item-inactive">协同通信</span>
+        <span class="nav-item nav-item-inactive">态势感知</span>
+        <span class="nav-item nav-item-inactive">复盘中心</span>
+        <span class="nav-item nav-item-inactive">管理后台</span>
+      </nav>
+    </div>
+    <div class="flex items-center gap-5">
+      <div class="flex items-center gap-2 text-xs" style="color: var(--text-secondary);">
+        <span class="pulse-dot"></span>
+        <span>当前会话: <span class="text-white">6级地震-演练#003</span></span>
+        <span class="mono" style="color: var(--text-tertiary);">| 12:34 | 算法: AUCTION_HUNGARIAN</span>
+      </div>
+      <button class="btn-ghost flex items-center gap-1.5">
+        <i data-lucide="moon" class="w-3.5 h-3.5"></i> 主题
+      </button>
+      <div class="relative">
+        <i data-lucide="bell" class="w-5 h-5" style="color: var(--text-secondary);"></i>
+        <span class="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center" style="background: var(--danger); color: white;">3</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold" style="background: var(--accent-primary);">C</div>
+        <span class="text-sm">commander001</span>
+        <i data-lucide="chevron-down" class="w-4 h-4" style="color: var(--text-tertiary);"></i>
+      </div>
+    </div>
+  </header>
+
+  <!-- KPI 顶条 -->
+  <div class="h-20 flex items-center px-6 gap-4 border-b" style="background: var(--bg-secondary); border-color: var(--border-subtle);">
+    <div class="flex-1 flex items-center gap-3 px-4 py-2 rounded-lg" style="background: var(--bg-tertiary);">
+      <i data-lucide="bot" class="w-8 h-8" style="color: var(--accent-primary);"></i>
+      <div>
+        <div class="text-xs" style="color: var(--text-secondary);">在线机器人</div>
+        <div><span class="kpi-num mono">25</span><span class="text-sm mono ml-1" style="color: var(--text-tertiary);">/ 25</span></div>
+      </div>
+    </div>
+    <div class="flex-1 flex items-center gap-3 px-4 py-2 rounded-lg" style="background: var(--bg-tertiary);">
+      <i data-lucide="clipboard-list" class="w-8 h-8" style="color: var(--info);"></i>
+      <div>
+        <div class="text-xs" style="color: var(--text-secondary);">任务总数</div>
+        <div class="flex items-baseline gap-2">
+          <span class="kpi-num mono">30</span>
+          <span class="text-xs mono" style="color: var(--text-tertiary);">执行 18 · 完成 8 · 待 4</span>
+        </div>
+      </div>
+    </div>
+    <div class="flex-1 flex items-center gap-3 px-4 py-2 rounded-lg" style="background: var(--bg-tertiary);">
+      <i data-lucide="check-circle-2" class="w-8 h-8" style="color: var(--success);"></i>
+      <div>
+        <div class="text-xs" style="color: var(--text-secondary);">任务完成率</div>
+        <div><span class="kpi-num mono" style="color: var(--success);">67</span><span class="text-base mono ml-0.5" style="color: var(--success);">%</span></div>
+      </div>
+    </div>
+    <div class="flex-1 flex items-center gap-3 px-4 py-2 rounded-lg" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);">
+      <i data-lucide="alert-triangle" class="w-8 h-8" style="color: var(--danger);"></i>
+      <div>
+        <div class="text-xs" style="color: var(--text-secondary);">告警</div>
+        <div><span class="kpi-num mono" style="color: var(--danger);">3</span><span class="text-xs ml-2" style="color: var(--text-tertiary);">待处理</span></div>
+      </div>
+    </div>
+    <div class="flex-1 flex items-center gap-3 px-4 py-2 rounded-lg" style="background: var(--bg-tertiary);">
+      <i data-lucide="cpu" class="w-8 h-8" style="color: var(--warning);"></i>
+      <div>
+        <div class="text-xs" style="color: var(--text-secondary);">调度算法</div>
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-semibold mono">Hungarian</span>
+          <button class="btn-ghost" style="padding: 2px 8px; font-size: 11px;">切换</button>
+        </div>
+      </div>
+    </div>
+    <div class="flex-1 flex items-center gap-3 px-4 py-2 rounded-lg" style="background: var(--bg-tertiary);">
+      <i data-lucide="map-pin" class="w-8 h-8" style="color: var(--robot-aerial);"></i>
+      <div>
+        <div class="text-xs" style="color: var(--text-secondary);">场景</div>
+        <div class="text-sm font-semibold">6级地震-演练</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 三栏主体 -->
+  <main class="flex-1 flex gap-3 p-3 overflow-hidden">
+
+    <!-- 左栏:机器人编队 -->
+    <aside class="panel w-72 flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between" style="border-color: var(--border-subtle);">
+        <div class="flex items-center gap-2">
+          <i data-lucide="bot" class="w-4 h-4"></i>
+          <span class="text-sm font-semibold">机器人编队</span>
+        </div>
+        <span class="badge badge-success">25 在线</span>
+      </div>
+
+      <!-- 类型 Tab -->
+      <div class="px-3 py-2 flex gap-1 border-b" style="border-color: var(--border-subtle);">
+        <button class="flex-1 py-1.5 text-xs rounded font-semibold" style="background: var(--accent-primary); color: white;">全部 25</button>
+        <button class="flex-1 py-1.5 text-xs rounded" style="color: var(--text-secondary);">空 10</button>
+        <button class="flex-1 py-1.5 text-xs rounded" style="color: var(--text-secondary);">陆 10</button>
+        <button class="flex-1 py-1.5 text-xs rounded" style="color: var(--text-secondary);">水 5</button>
+      </div>
+
+      <!-- 搜索 -->
+      <div class="px-3 py-2 border-b" style="border-color: var(--border-subtle);">
+        <div class="relative">
+          <i data-lucide="search" class="w-4 h-4 absolute left-2.5 top-2" style="color: var(--text-tertiary);"></i>
+          <input type="text" placeholder="搜索机器人编号..." class="w-full pl-8 pr-3 py-1.5 text-xs rounded" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+        </div>
+      </div>
+
+      <!-- 机器人卡片列表 -->
+      <div class="flex-1 overflow-y-auto scroll-thin px-3 py-2 space-y-2">
+        <!-- 卡片 1 -->
+        <div class="rounded-lg p-3 cursor-pointer hover:opacity-90" style="background: var(--bg-tertiary); border-left: 3px solid var(--robot-aerial);">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="plane" class="w-4 h-4" style="color: var(--robot-aerial);"></i>
+              <span class="text-sm font-semibold mono">UAV-003</span>
+            </div>
+            <span class="badge badge-info">EXECUTING</span>
+          </div>
+          <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="battery-medium" class="w-3.5 h-3.5" style="color: var(--success);"></i>
+            <div class="flex-1 progress-bar" style="height: 4px;"><div class="progress-fill" style="width: 80%;"></div></div>
+            <span class="text-xs mono" style="color: var(--success);">80%</span>
+          </div>
+          <div class="text-xs mono" style="color: var(--text-tertiary);">→ T-018 · (123, 456)</div>
+        </div>
+
+        <!-- 卡片 2 -->
+        <div class="rounded-lg p-3 cursor-pointer hover:opacity-90" style="background: var(--bg-tertiary); border-left: 3px solid var(--robot-ground);">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="bot" class="w-4 h-4" style="color: var(--robot-ground);"></i>
+              <span class="text-sm font-semibold mono">GND-001</span>
+            </div>
+            <span class="badge badge-info">EXECUTING</span>
+          </div>
+          <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="battery" class="w-3.5 h-3.5" style="color: var(--warning);"></i>
+            <div class="flex-1 progress-bar" style="height: 4px;"><div class="progress-fill" style="width: 60%;"></div></div>
+            <span class="text-xs mono" style="color: var(--warning);">60%</span>
+          </div>
+          <div class="text-xs mono" style="color: var(--text-tertiary);">→ T-021 · (89, 234)</div>
+        </div>
+
+        <!-- 卡片 3 - 故障 -->
+        <div class="rounded-lg p-3 cursor-pointer" style="background: rgba(239,68,68,0.1); border: 1px solid var(--danger);">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="plane" class="w-4 h-4" style="color: var(--robot-aerial);"></i>
+              <span class="text-sm font-semibold mono">UAV-007</span>
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5" style="color: var(--danger);"></i>
+            </div>
+            <span class="badge badge-danger">FAULT</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <i data-lucide="battery-low" class="w-3.5 h-3.5" style="color: var(--danger);"></i>
+            <div class="flex-1 progress-bar" style="height: 4px;"><div class="progress-fill" style="width: 18%; background: var(--danger);"></div></div>
+            <span class="text-xs mono font-bold" style="color: var(--danger);">18%</span>
+          </div>
+          <button class="w-full py-1 text-xs rounded font-semibold" style="background: var(--danger); color: white;">紧急召回</button>
+        </div>
+
+        <!-- 卡片 4 -->
+        <div class="rounded-lg p-3 cursor-pointer hover:opacity-90" style="background: var(--bg-tertiary); border-left: 3px solid var(--text-tertiary);">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="bot" class="w-4 h-4" style="color: var(--robot-ground);"></i>
+              <span class="text-sm font-semibold mono">GND-005</span>
+            </div>
+            <span class="badge badge-success">IDLE</span>
+          </div>
+          <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="battery-full" class="w-3.5 h-3.5" style="color: var(--success);"></i>
+            <div class="flex-1 progress-bar" style="height: 4px;"><div class="progress-fill" style="width: 95%;"></div></div>
+            <span class="text-xs mono" style="color: var(--success);">95%</span>
+          </div>
+          <div class="text-xs mono" style="color: var(--text-tertiary);">基地待命 · (50, 50)</div>
+        </div>
+
+        <!-- 卡片 5 -->
+        <div class="rounded-lg p-3 cursor-pointer hover:opacity-90" style="background: var(--bg-tertiary); border-left: 3px solid var(--robot-marine);">
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="anchor" class="w-4 h-4" style="color: var(--robot-marine);"></i>
+              <span class="text-sm font-semibold mono">MAR-002</span>
+            </div>
+            <span class="badge badge-warning">BIDDING</span>
+          </div>
+          <div class="flex items-center gap-2 mb-1">
+            <i data-lucide="battery-medium" class="w-3.5 h-3.5" style="color: var(--success);"></i>
+            <div class="flex-1 progress-bar" style="height: 4px;"><div class="progress-fill" style="width: 72%;"></div></div>
+            <span class="text-xs mono" style="color: var(--success);">72%</span>
+          </div>
+          <div class="text-xs mono" style="color: var(--text-tertiary);">出价中 · (180, 320)</div>
+        </div>
+
+        <div class="text-center text-xs py-2" style="color: var(--text-tertiary);">··· 更多 20 个 ···</div>
+      </div>
+
+      <!-- 底部操作 -->
+      <div class="px-3 py-2 border-t flex gap-2" style="border-color: var(--border-subtle);">
+        <button class="flex-1 btn-ghost flex items-center justify-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 编队</button>
+        <button class="flex-1 btn-ghost flex items-center justify-center gap-1" style="color: var(--danger); border-color: var(--danger);"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> 全员召回</button>
+      </div>
+    </aside>
+
+    <!-- 中央地图 -->
+    <section class="panel flex-1 flex flex-col overflow-hidden">
+      <div class="px-4 py-2 border-b flex items-center justify-between" style="border-color: var(--border-subtle);">
+        <div class="flex items-center gap-2">
+          <i data-lucide="map" class="w-4 h-4"></i>
+          <span class="text-sm font-semibold">态势地图</span>
+          <span class="text-xs mono" style="color: var(--text-tertiary);">| 缩放 100% | 中心 (250, 250)</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button class="btn-ghost"><i data-lucide="hand" class="w-3.5 h-3.5"></i></button>
+          <button class="btn-ghost"><i data-lucide="square-dashed" class="w-3.5 h-3.5"></i></button>
+          <button class="btn-ghost"><i data-lucide="map-pin-plus" class="w-3.5 h-3.5"></i></button>
+          <button class="btn-ghost"><i data-lucide="ruler" class="w-3.5 h-3.5"></i></button>
+          <div class="w-px h-5 mx-1" style="background: var(--border-default);"></div>
+          <button class="btn-ghost"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
+          <span class="text-xs mono px-2" style="color: var(--text-secondary);">100%</span>
+          <button class="btn-ghost"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+          <button class="btn-ghost"><i data-lucide="locate-fixed" class="w-3.5 h-3.5"></i></button>
+        </div>
+      </div>
+
+      <!-- 地图 SVG -->
+      <div class="flex-1 relative overflow-hidden" style="background: radial-gradient(circle at 50% 50%, #1a2030 0%, #0F1419 100%);">
+        <svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">
+          <!-- 网格 -->
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2A3142" stroke-width="0.5"/>
+            </pattern>
+            <radialGradient id="signal" cx="50%" cy="50%">
+              <stop offset="0%" stop-color="#10B981" stop-opacity="0.6"/>
+              <stop offset="100%" stop-color="#10B981" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="hazard" cx="50%" cy="50%">
+              <stop offset="0%" stop-color="#EF4444" stop-opacity="0.5"/>
+              <stop offset="100%" stop-color="#EF4444" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect width="800" height="600" fill="url(#grid)"/>
+
+          <!-- 危险区 -->
+          <circle cx="600" cy="180" r="80" fill="url(#hazard)"/>
+          <text x="600" y="180" text-anchor="middle" font-size="11" fill="#EF4444" font-weight="600">危险区</text>
+
+          <!-- 幸存者信号 -->
+          <circle cx="200" cy="350" r="60" fill="url(#signal)"/>
+          <circle cx="200" cy="350" r="4" fill="#10B981"/>
+          <text x="200" y="375" text-anchor="middle" font-size="10" fill="#10B981">幸存者信号</text>
+
+          <circle cx="450" cy="420" r="50" fill="url(#signal)"/>
+          <circle cx="450" cy="420" r="4" fill="#10B981"/>
+
+          <!-- 任务网格 -->
+          <rect x="160" y="280" width="120" height="120" fill="none" stroke="#3B82F6" stroke-width="1.5" stroke-dasharray="4,4"/>
+          <text x="220" y="275" text-anchor="middle" font-size="10" fill="#3B82F6" font-weight="600">T-018 · 60%</text>
+
+          <rect x="380" y="380" width="80" height="80" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4,4"/>
+          <text x="420" y="375" text-anchor="middle" font-size="10" fill="#F59E0B" font-weight="600">T-021 · 35%</text>
+
+          <!-- 机器人 -->
+          <!-- UAV-003 -->
+          <g transform="translate(220, 320)">
+            <circle r="14" fill="#1A1F2E" stroke="#60A5FA" stroke-width="2"/>
+            <path d="M -6 -2 L 6 -2 L 4 4 L -4 4 Z" fill="#60A5FA"/>
+            <text y="28" text-anchor="middle" font-size="9" fill="#60A5FA" font-weight="600" font-family="monospace">UAV-003</text>
+          </g>
+
+          <!-- GND-001 -->
+          <g transform="translate(420, 410)">
+            <rect x="-12" y="-12" width="24" height="24" rx="3" fill="#1A1F2E" stroke="#A78BFA" stroke-width="2"/>
+            <rect x="-6" y="-6" width="12" height="12" rx="1" fill="#A78BFA"/>
+            <text y="28" text-anchor="middle" font-size="9" fill="#A78BFA" font-weight="600" font-family="monospace">GND-001</text>
+          </g>
+
+          <!-- UAV-007 故障 -->
+          <g transform="translate(580, 200)">
+            <circle r="14" fill="#1A1F2E" stroke="#EF4444" stroke-width="2"/>
+            <circle r="20" fill="none" stroke="#EF4444" stroke-width="1" stroke-dasharray="3,3" opacity="0.8"/>
+            <path d="M -6 -2 L 6 -2 L 4 4 L -4 4 Z" fill="#EF4444"/>
+            <text y="28" text-anchor="middle" font-size="9" fill="#EF4444" font-weight="600" font-family="monospace">UAV-007 !</text>
+          </g>
+
+          <!-- IDLE 机器人(基地) -->
+          <g transform="translate(80, 80)">
+            <rect x="-30" y="-15" width="60" height="30" rx="4" fill="#252B3D" stroke="#3A4258" stroke-width="1"/>
+            <text y="4" text-anchor="middle" font-size="10" fill="#9BA3B8" font-weight="600">基地 (5)</text>
+          </g>
+
+          <!-- MAR-002 -->
+          <g transform="translate(520, 480)">
+            <polygon points="0,-12 10,8 -10,8" fill="#1A1F2E" stroke="#22D3EE" stroke-width="2"/>
+            <text y="22" text-anchor="middle" font-size="9" fill="#22D3EE" font-weight="600" font-family="monospace">MAR-002</text>
+          </g>
+
+          <!-- 机器人轨迹 -->
+          <path d="M 80 80 Q 150 200 220 320" fill="none" stroke="#60A5FA" stroke-width="1" stroke-dasharray="2,3" opacity="0.5"/>
+          <path d="M 80 80 Q 250 200 420 410" fill="none" stroke="#A78BFA" stroke-width="1" stroke-dasharray="2,3" opacity="0.5"/>
+
+          <!-- 比例尺 -->
+          <g transform="translate(40, 560)">
+            <line x1="0" y1="0" x2="80" y2="0" stroke="#5C6580" stroke-width="2"/>
+            <line x1="0" y1="-3" x2="0" y2="3" stroke="#5C6580" stroke-width="2"/>
+            <line x1="80" y1="-3" x2="80" y2="3" stroke="#5C6580" stroke-width="2"/>
+            <text x="40" y="15" text-anchor="middle" font-size="9" fill="#5C6580">100m</text>
+          </g>
+        </svg>
+
+        <!-- 图例浮层 -->
+        <div class="absolute top-3 left-3 panel p-3 text-xs space-y-1.5" style="background: rgba(26,31,46,0.9); backdrop-filter: blur(8px);">
+          <div class="font-semibold mb-1.5" style="color: var(--text-secondary);">图例</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background: var(--robot-aerial);"></span>无人机</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background: var(--robot-ground);"></span>地面</div>
+          <div class="flex items-center gap-2"><span class="w-0 h-0" style="border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:10px solid var(--robot-marine);"></span>水面</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background: var(--success); opacity: 0.6;"></span>幸存者</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background: var(--danger); opacity: 0.6;"></span>危险区</div>
+        </div>
+      </div>
+
+      <!-- 地图底栏 -->
+      <div class="h-10 px-4 flex items-center justify-between border-t" style="border-color: var(--border-subtle);">
+        <div class="flex items-center gap-3">
+          <span class="text-xs flex items-center gap-1.5"><span class="pulse-dot"></span>实时模式</span>
+          <button class="btn-ghost"><i data-lucide="pause" class="w-3.5 h-3.5"></i></button>
+          <button class="btn-ghost"><i data-lucide="camera" class="w-3.5 h-3.5"></i></button>
+        </div>
+        <button class="btn-ghost flex items-center gap-1"><i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> 全屏</button>
+      </div>
+    </section>
+
+    <!-- 右栏:任务/告警 -->
+    <aside class="panel w-80 flex flex-col">
+      <!-- Tab -->
+      <div class="flex border-b" style="border-color: var(--border-subtle);">
+        <button class="flex-1 py-3 text-sm font-semibold border-b-2" style="border-color: var(--accent-primary); color: var(--accent-primary);">任务 30</button>
+        <button class="flex-1 py-3 text-sm" style="color: var(--text-secondary);">告警 <span class="badge badge-danger ml-1">3</span></button>
+        <button class="flex-1 py-3 text-sm" style="color: var(--text-secondary);">日志</button>
+      </div>
+
+      <!-- 创建按钮 -->
+      <div class="px-3 py-2.5 border-b" style="border-color: var(--border-subtle);">
+        <button class="btn-primary w-full flex items-center justify-center gap-1.5">
+          <i data-lucide="plus" class="w-4 h-4"></i> 创建救援任务
+        </button>
+      </div>
+
+      <!-- 任务列表 -->
+      <div class="flex-1 overflow-y-auto scroll-thin px-3 py-2 space-y-2.5">
+        <!-- 任务 1 高优先级 -->
+        <div class="rounded-lg p-3" style="background: var(--bg-tertiary); border-left: 3px solid var(--danger);">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold mono">T-018</span>
+              <span class="badge badge-danger">HIGH</span>
+              <span class="text-xs" style="color: var(--text-secondary);">搜救</span>
+            </div>
+            <span class="text-xs mono" style="color: var(--text-tertiary);">17m</span>
+          </div>
+          <div class="text-xs mb-2" style="color: var(--text-secondary);">区域 (12,5)~(15,8)</div>
+          <div class="flex items-center gap-2 text-xs mb-2">
+            <i data-lucide="plane" class="w-3.5 h-3.5" style="color: var(--robot-aerial);"></i>
+            <span class="mono">UAV-003</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <div class="flex-1 progress-bar"><div class="progress-fill" style="width: 60%;"></div></div>
+            <span class="text-xs mono font-semibold">60%</span>
+          </div>
+          <div class="flex gap-1.5">
+            <button class="flex-1 btn-warning" style="padding: 4px 8px; font-size: 12px;"><i data-lucide="replace" class="w-3 h-3 inline"></i> 改派</button>
+            <button class="btn-ghost" style="padding: 4px 8px;">取消</button>
+            <button class="btn-ghost" style="padding: 4px 8px;">详情</button>
+          </div>
+        </div>
+
+        <!-- 任务 2 中优先级 -->
+        <div class="rounded-lg p-3" style="background: var(--bg-tertiary); border-left: 3px solid var(--warning);">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold mono">T-021</span>
+              <span class="badge badge-warning">MEDIUM</span>
+              <span class="text-xs" style="color: var(--text-secondary);">侦察</span>
+            </div>
+            <span class="text-xs mono" style="color: var(--text-tertiary);">42m</span>
+          </div>
+          <div class="text-xs mb-2" style="color: var(--text-secondary);">区域 (8,3)~(10,5)</div>
+          <div class="flex items-center gap-2 text-xs mb-2">
+            <i data-lucide="bot" class="w-3.5 h-3.5" style="color: var(--robot-ground);"></i>
+            <span class="mono">GND-001</span>
+          </div>
+          <div class="flex items-center gap-2 mb-2">
+            <div class="flex-1 progress-bar"><div class="progress-fill" style="width: 35%;"></div></div>
+            <span class="text-xs mono font-semibold">35%</span>
+          </div>
+          <div class="flex gap-1.5">
+            <button class="flex-1 btn-warning" style="padding: 4px 8px; font-size: 12px;"><i data-lucide="replace" class="w-3 h-3 inline"></i> 改派</button>
+            <button class="btn-ghost" style="padding: 4px 8px;">取消</button>
+            <button class="btn-ghost" style="padding: 4px 8px;">详情</button>
+          </div>
+        </div>
+
+        <!-- 任务 3 待分配 拍卖中 -->
+        <div class="rounded-lg p-3 border-2 border-dashed" style="background: rgba(59,130,246,0.05); border-color: var(--accent-primary);">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold mono">T-024</span>
+              <span class="badge" style="background: rgba(59,130,246,0.2); color: var(--accent-primary);">拍卖中</span>
+            </div>
+            <span class="text-xs mono" style="color: var(--accent-primary);">1.2s</span>
+          </div>
+          <div class="text-xs mb-2" style="color: var(--text-secondary);">区域 (20,15)~(22,17)</div>
+          <div class="text-xs mb-2 flex items-center gap-1.5" style="color: var(--accent-primary);">
+            <i data-lucide="gavel" class="w-3.5 h-3.5"></i>
+            <span>5 个机器人正在出价</span>
+          </div>
+          <button class="w-full btn-ghost" style="padding: 4px 8px;">查看候选</button>
+        </div>
+
+        <!-- 任务 4 完成 -->
+        <div class="rounded-lg p-3 opacity-70" style="background: var(--bg-tertiary); border-left: 3px solid var(--success);">
+          <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold mono">T-015</span>
+              <span class="badge badge-success">已完成</span>
+            </div>
+            <i data-lucide="check-circle-2" class="w-4 h-4" style="color: var(--success);"></i>
+          </div>
+          <div class="text-xs" style="color: var(--text-secondary);">UAV-005 · 完成于 12:08</div>
+        </div>
+
+        <div class="text-center text-xs py-2" style="color: var(--text-tertiary);">··· 26 个任务 ···</div>
+      </div>
+
+      <!-- 底部告警 -->
+      <div class="border-t px-3 py-2.5" style="border-color: var(--border-subtle); background: rgba(239,68,68,0.05);">
+        <div class="flex items-center gap-1.5 mb-1.5">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5" style="color: var(--danger);"></i>
+          <span class="text-xs font-semibold" style="color: var(--danger);">最近告警</span>
+        </div>
+        <div class="text-xs space-y-1" style="color: var(--text-secondary);">
+          <div>· UAV-007 低电量 (15%)</div>
+          <div>· T-018 SLA 即将超时</div>
+          <div>· GND-002 通信中断 30s</div>
+        </div>
+      </div>
+    </aside>
+
+  </main>
+</div>
+
+<script>
+  lucide.createIcons();
+</script>
+</body>
+</html>

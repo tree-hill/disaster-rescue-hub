@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>救灾中枢 · 算法对比实验</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --bg-primary: #0F1419; --bg-secondary: #1A1F2E; --bg-tertiary: #252B3D; --bg-elevated: #2D3548;
+    --border-subtle: #2A3142; --border-default: #3A4258; --border-strong: #4D5670;
+    --text-primary: #E6EAF2; --text-secondary: #9BA3B8; --text-tertiary: #5C6580;
+    --accent-primary: #3B82F6; --success: #10B981; --warning: #F59E0B; --danger: #EF4444; --info: #06B6D4;
+    --algo-hungarian: #3B82F6;
+    --algo-greedy: #F59E0B;
+    --algo-random: #9BA3B8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg-primary); color: var(--text-primary);
+    font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    margin: 0; overflow-x: hidden;
+  }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', monospace; }
+  .panel { background: var(--bg-secondary); border: 1px solid var(--border-subtle); border-radius: 8px; }
+  .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+  .badge-success { background: rgba(16,185,129,0.15); color: var(--success); }
+  .badge-warning { background: rgba(245,158,11,0.15); color: var(--warning); }
+  .btn-primary { background: var(--accent-primary); color: white; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; }
+  .btn-primary:hover { background: #60A5FA; }
+  .btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-default); padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+  .btn-ghost:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+  .nav-item { padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .nav-item-active { background: var(--accent-primary); color: white; }
+  .nav-item-inactive { color: var(--text-secondary); }
+  .nav-item-inactive:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+
+  .algo-pill { padding: 6px 14px; border-radius: 16px; font-size: 12px; font-weight: 600; mono: true; }
+  .pill-hungarian { background: rgba(59,130,246,0.15); color: var(--algo-hungarian); border: 1px solid var(--algo-hungarian); }
+  .pill-greedy { background: rgba(245,158,11,0.15); color: var(--algo-greedy); border: 1px solid var(--algo-greedy); }
+  .pill-random { background: rgba(155,163,184,0.15); color: var(--algo-random); border: 1px solid var(--algo-random); }
+
+  .check-active { background: var(--accent-primary); border-color: var(--accent-primary); }
+</style>
+</head>
+<body>
+
+<div class="min-h-screen flex flex-col">
+
+  <!-- 顶部导航 -->
+  <header class="h-14 flex items-center justify-between px-6 border-b" style="background: var(--bg-secondary); border-color: var(--border-subtle);">
+    <div class="flex items-center gap-8">
+      <div class="flex items-center gap-2">
+        <i data-lucide="shield-check" class="w-6 h-6" style="color: var(--accent-primary);"></i>
+        <span class="text-base font-bold">救灾中枢</span>
+      </div>
+      <nav class="flex items-center gap-1">
+        <span class="nav-item nav-item-inactive">指挥工作台</span>
+        <span class="nav-item nav-item-inactive">机器人管理</span>
+        <span class="nav-item nav-item-inactive">任务管理</span>
+        <span class="nav-item nav-item-inactive">态势感知</span>
+        <span class="nav-item nav-item-active">复盘中心</span>
+        <span class="nav-item nav-item-inactive">管理后台</span>
+      </nav>
+    </div>
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold" style="background: var(--accent-primary);">C</div>
+      <span class="text-sm">commander001</span>
+    </div>
+  </header>
+
+  <!-- Tab -->
+  <div class="flex border-b px-6" style="background: var(--bg-secondary); border-color: var(--border-subtle);">
+    <button class="px-5 py-3 text-sm flex items-center gap-2" style="color: var(--text-secondary);">
+      <i data-lucide="history" class="w-4 h-4"></i> 历史回放
+    </button>
+    <button class="px-5 py-3 text-sm font-semibold border-b-2 flex items-center gap-2" style="border-color: var(--accent-primary); color: var(--accent-primary);">
+      <i data-lucide="bar-chart-3" class="w-4 h-4"></i> 算法对比实验
+    </button>
+  </div>
+
+  <!-- 主体 -->
+  <main class="flex-1 p-5 overflow-y-auto">
+    <div class="max-w-[1400px] mx-auto space-y-4">
+
+      <!-- 实验配置区 -->
+      <div class="panel p-5">
+        <div class="flex items-center gap-2 mb-4">
+          <i data-lucide="flask-conical" class="w-5 h-5" style="color: var(--warning);"></i>
+          <h2 class="text-lg font-semibold">实验配置</h2>
+        </div>
+
+        <div class="grid grid-cols-4 gap-4 mb-4">
+          <!-- 场景 -->
+          <div>
+            <label class="text-xs font-semibold mb-1.5 block" style="color: var(--text-secondary);">场景剧本</label>
+            <select class="w-full px-3 py-2 text-sm rounded" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+              <option>EARTHQUAKE_M6 (6级地震)</option>
+              <option>FOREST_FIRE_L2 (森林火灾)</option>
+            </select>
+          </div>
+          <!-- 任务数 -->
+          <div>
+            <label class="text-xs font-semibold mb-1.5 block" style="color: var(--text-secondary);">任务数量</label>
+            <input type="number" value="30" class="w-full px-3 py-2 text-sm rounded mono" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+          </div>
+          <!-- 重复次数 -->
+          <div>
+            <label class="text-xs font-semibold mb-1.5 block" style="color: var(--text-secondary);">重复次数</label>
+            <input type="number" value="10" class="w-full px-3 py-2 text-sm rounded mono" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+          </div>
+          <!-- 执行模式 -->
+          <div>
+            <label class="text-xs font-semibold mb-1.5 block" style="color: var(--text-secondary);">执行模式</label>
+            <select class="w-full px-3 py-2 text-sm rounded" style="background: var(--bg-tertiary); border: 1px solid var(--border-default); color: var(--text-primary);">
+              <option>顺序(逐个执行)</option>
+              <option>并行(节省时间)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 算法选择 -->
+        <div class="mb-4">
+          <label class="text-xs font-semibold mb-2 block" style="color: var(--text-secondary);">参与对比的算法</label>
+          <div class="flex gap-3">
+            <label class="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer" style="background: rgba(59,130,246,0.1); border: 1px solid var(--algo-hungarian);">
+              <span class="w-4 h-4 rounded check-active flex items-center justify-center"><i data-lucide="check" class="w-3 h-3 text-white"></i></span>
+              <span class="text-sm font-semibold mono" style="color: var(--algo-hungarian);">AUCTION_HUNGARIAN</span>
+              <span class="text-xs" style="color: var(--text-tertiary);">(本文方法)</span>
+            </label>
+            <label class="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer" style="background: rgba(245,158,11,0.1); border: 1px solid var(--algo-greedy);">
+              <span class="w-4 h-4 rounded check-active flex items-center justify-center" style="background: var(--algo-greedy); border-color: var(--algo-greedy);"><i data-lucide="check" class="w-3 h-3 text-white"></i></span>
+              <span class="text-sm font-semibold mono" style="color: var(--algo-greedy);">GREEDY</span>
+              <span class="text-xs" style="color: var(--text-tertiary);">(对照)</span>
+            </label>
+            <label class="flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer" style="background: rgba(155,163,184,0.1); border: 1px solid var(--algo-random);">
+              <span class="w-4 h-4 rounded check-active flex items-center justify-center" style="background: var(--algo-random); border-color: var(--algo-random);"><i data-lucide="check" class="w-3 h-3 text-white"></i></span>
+              <span class="text-sm font-semibold mono" style="color: var(--algo-random);">RANDOM</span>
+              <span class="text-xs" style="color: var(--text-tertiary);">(基线)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 状态与按钮 -->
+        <div class="flex items-center justify-between pt-3 border-t" style="border-color: var(--border-subtle);">
+          <div class="flex items-center gap-3 text-xs" style="color: var(--text-secondary);">
+            <i data-lucide="info" class="w-4 h-4"></i>
+            <span>预估总时长 <span class="mono font-bold text-white">15 分钟</span> · 将产生 <span class="mono font-bold text-white">30 条</span> 实验记录</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <button class="btn-ghost flex items-center gap-1.5"><i data-lucide="save" class="w-3.5 h-3.5"></i> 保存配置</button>
+            <button class="btn-primary flex items-center gap-2"><i data-lucide="play" class="w-4 h-4"></i> 启动实验</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 实验进度(已完成显示) -->
+      <div class="panel p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i data-lucide="check-circle-2" class="w-5 h-5" style="color: var(--success);"></i>
+            <span class="text-sm font-semibold">实验进度</span>
+            <span class="badge badge-success">已完成</span>
+          </div>
+          <div class="text-xs mono" style="color: var(--text-tertiary);">耗时: 14:32 · 完成时间: 2026-04-22 14:30</div>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="px-4 py-3 rounded-lg" style="background: rgba(59,130,246,0.1); border: 1px solid var(--algo-hungarian);">
+            <div class="flex items-center justify-between text-xs mb-1.5">
+              <span class="font-semibold mono" style="color: var(--algo-hungarian);">AUCTION_HUNGARIAN</span>
+              <span class="mono">10 / 10 ✓</span>
+            </div>
+            <div class="h-1.5 rounded-full" style="background: var(--bg-tertiary);">
+              <div class="h-full rounded-full" style="width: 100%; background: var(--algo-hungarian);"></div>
+            </div>
+          </div>
+          <div class="px-4 py-3 rounded-lg" style="background: rgba(245,158,11,0.1); border: 1px solid var(--algo-greedy);">
+            <div class="flex items-center justify-between text-xs mb-1.5">
+              <span class="font-semibold mono" style="color: var(--algo-greedy);">GREEDY</span>
+              <span class="mono">10 / 10 ✓</span>
+            </div>
+            <div class="h-1.5 rounded-full" style="background: var(--bg-tertiary);">
+              <div class="h-full rounded-full" style="width: 100%; background: var(--algo-greedy);"></div>
+            </div>
+          </div>
+          <div class="px-4 py-3 rounded-lg" style="background: rgba(155,163,184,0.1); border: 1px solid var(--algo-random);">
+            <div class="flex items-center justify-between text-xs mb-1.5">
+              <span class="font-semibold mono" style="color: var(--algo-random);">RANDOM</span>
+              <span class="mono">10 / 10 ✓</span>
+            </div>
+            <div class="h-1.5 rounded-full" style="background: var(--bg-tertiary);">
+              <div class="h-full rounded-full" style="width: 100%; background: var(--algo-random);"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 对比结果总览 -->
+      <div class="grid grid-cols-3 gap-4">
+        <!-- 算法 1 -->
+        <div class="panel p-4 relative" style="border-color: var(--algo-hungarian);">
+          <div class="absolute top-0 right-0 px-3 py-1 rounded-bl-lg rounded-tr-lg text-xs font-bold" style="background: var(--algo-hungarian); color: white;">★ 最优</div>
+          <div class="text-xs mb-1 mono" style="color: var(--text-tertiary);">AUCTION_HUNGARIAN</div>
+          <div class="text-2xl font-bold mono mb-3" style="color: var(--algo-hungarian);">87.3%</div>
+          <div class="text-xs space-y-1.5" style="color: var(--text-secondary);">
+            <div class="flex justify-between"><span>响应时间</span><span class="mono">42.5s</span></div>
+            <div class="flex justify-between"><span>路径总长</span><span class="mono">8.2km</span></div>
+            <div class="flex justify-between"><span>负载标准差</span><span class="mono">1.21</span></div>
+            <div class="flex justify-between"><span>决策耗时</span><span class="mono">1842ms</span></div>
+          </div>
+        </div>
+        <!-- 算法 2 -->
+        <div class="panel p-4">
+          <div class="text-xs mb-1 mono" style="color: var(--text-tertiary);">GREEDY</div>
+          <div class="text-2xl font-bold mono mb-3" style="color: var(--algo-greedy);">72.1%</div>
+          <div class="text-xs space-y-1.5" style="color: var(--text-secondary);">
+            <div class="flex justify-between"><span>响应时间</span><span class="mono">38.2s</span></div>
+            <div class="flex justify-between"><span>路径总长</span><span class="mono">7.5km</span></div>
+            <div class="flex justify-between"><span>负载标准差</span><span class="mono">3.84</span></div>
+            <div class="flex justify-between"><span>决策耗时</span><span class="mono" style="color: var(--success);">125ms</span></div>
+          </div>
+        </div>
+        <!-- 算法 3 -->
+        <div class="panel p-4">
+          <div class="text-xs mb-1 mono" style="color: var(--text-tertiary);">RANDOM(基线)</div>
+          <div class="text-2xl font-bold mono mb-3" style="color: var(--algo-random);">54.7%</div>
+          <div class="text-xs space-y-1.5" style="color: var(--text-secondary);">
+            <div class="flex justify-between"><span>响应时间</span><span class="mono">63.8s</span></div>
+            <div class="flex justify-between"><span>路径总长</span><span class="mono">12.6km</span></div>
+            <div class="flex justify-between"><span>负载标准差</span><span class="mono">5.67</span></div>
+            <div class="flex justify-between"><span>决策耗时</span><span class="mono">8ms</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5 张对比图 -->
+      <div class="grid grid-cols-2 gap-4">
+
+        <!-- 图 6-1 任务完成率 -->
+        <div class="panel p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm font-semibold">图 6-1 任务完成率(%)</div>
+            <button class="btn-ghost"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
+          </div>
+          <svg viewBox="0 0 400 220" style="width:100%;">
+            <line x1="40" y1="180" x2="380" y2="180" stroke="#3A4258" stroke-width="1"/>
+            <line x1="40" y1="20" x2="40" y2="180" stroke="#3A4258" stroke-width="1"/>
+            <!-- 网格 -->
+            <line x1="40" y1="50" x2="380" y2="50" stroke="#252B3D" stroke-width="0.5" stroke-dasharray="2,2"/>
+            <line x1="40" y1="100" x2="380" y2="100" stroke="#252B3D" stroke-width="0.5" stroke-dasharray="2,2"/>
+            <line x1="40" y1="150" x2="380" y2="150" stroke="#252B3D" stroke-width="0.5" stroke-dasharray="2,2"/>
+            <!-- Y 标签 -->
+            <text x="35" y="184" text-anchor="end" font-size="9" fill="#5C6580">0</text>
+            <text x="35" y="154" text-anchor="end" font-size="9" fill="#5C6580">25</text>
+            <text x="35" y="104" text-anchor="end" font-size="9" fill="#5C6580">50</text>
+            <text x="35" y="54" text-anchor="end" font-size="9" fill="#5C6580">75</text>
+            <text x="35" y="24" text-anchor="end" font-size="9" fill="#5C6580">100</text>
+            <!-- 柱 -->
+            <rect x="80" y="40" width="60" height="140" fill="url(#bar1)"/>
+            <text x="110" y="35" text-anchor="middle" font-size="11" fill="#3B82F6" font-weight="700">87.3</text>
+            <text x="110" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Hungarian</text>
+
+            <rect x="170" y="74" width="60" height="106" fill="url(#bar2)"/>
+            <text x="200" y="69" text-anchor="middle" font-size="11" fill="#F59E0B" font-weight="700">72.1</text>
+            <text x="200" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Greedy</text>
+
+            <rect x="260" y="105" width="60" height="75" fill="url(#bar3)"/>
+            <text x="290" y="100" text-anchor="middle" font-size="11" fill="#9BA3B8" font-weight="700">54.7</text>
+            <text x="290" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Random</text>
+
+            <defs>
+              <linearGradient id="bar1" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#60A5FA"/><stop offset="100%" stop-color="#3B82F6"/></linearGradient>
+              <linearGradient id="bar2" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#FBBF24"/><stop offset="100%" stop-color="#F59E0B"/></linearGradient>
+              <linearGradient id="bar3" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#9BA3B8"/><stop offset="100%" stop-color="#5C6580"/></linearGradient>
+            </defs>
+          </svg>
+          <div class="text-xs mt-2" style="color: var(--text-tertiary);">★ Hungarian 显著优于其他算法,提升 21% (vs Greedy)</div>
+        </div>
+
+        <!-- 图 6-2 平均响应时间 -->
+        <div class="panel p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm font-semibold">图 6-2 平均响应时间(秒)</div>
+            <button class="btn-ghost"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
+          </div>
+          <svg viewBox="0 0 400 220" style="width:100%;">
+            <line x1="40" y1="180" x2="380" y2="180" stroke="#3A4258"/>
+            <line x1="40" y1="20" x2="40" y2="180" stroke="#3A4258"/>
+            <line x1="40" y1="60" x2="380" y2="60" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <line x1="40" y1="120" x2="380" y2="120" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <text x="35" y="184" text-anchor="end" font-size="9" fill="#5C6580">0</text>
+            <text x="35" y="124" text-anchor="end" font-size="9" fill="#5C6580">30</text>
+            <text x="35" y="64" text-anchor="end" font-size="9" fill="#5C6580">60</text>
+            <text x="35" y="24" text-anchor="end" font-size="9" fill="#5C6580">90</text>
+
+            <!-- 折线:模拟 10 次试验 -->
+            <polyline points="60,95 90,90 120,98 150,92 180,88 210,95 240,93 270,89 300,94 330,91" fill="none" stroke="#3B82F6" stroke-width="2"/>
+            <polyline points="60,98 90,102 120,98 150,100 180,103 210,98 240,99 270,101 300,98 330,99" fill="none" stroke="#F59E0B" stroke-width="2"/>
+            <polyline points="60,55 90,50 120,58 150,48 180,52 210,45 240,55 270,50 300,53 330,49" fill="none" stroke="#9BA3B8" stroke-width="2"/>
+            <!-- 数据点 -->
+            <g fill="#3B82F6">
+              <circle cx="60" cy="95" r="3"/><circle cx="90" cy="90" r="3"/><circle cx="120" cy="98" r="3"/><circle cx="150" cy="92" r="3"/><circle cx="180" cy="88" r="3"/><circle cx="210" cy="95" r="3"/><circle cx="240" cy="93" r="3"/><circle cx="270" cy="89" r="3"/><circle cx="300" cy="94" r="3"/><circle cx="330" cy="91" r="3"/>
+            </g>
+
+            <text x="200" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">10 次重复实验</text>
+
+            <!-- 图例 -->
+            <g transform="translate(280,30)">
+              <rect width="90" height="40" fill="rgba(26,31,46,0.9)" stroke="#3A4258"/>
+              <line x1="6" y1="12" x2="20" y2="12" stroke="#3B82F6" stroke-width="2"/>
+              <text x="24" y="15" font-size="9" fill="#E6EAF2">Hungarian</text>
+              <line x1="6" y1="24" x2="20" y2="24" stroke="#F59E0B" stroke-width="2"/>
+              <text x="24" y="27" font-size="9" fill="#E6EAF2">Greedy</text>
+              <line x1="6" y1="36" x2="20" y2="36" stroke="#9BA3B8" stroke-width="2"/>
+              <text x="24" y="39" font-size="9" fill="#E6EAF2">Random</text>
+            </g>
+          </svg>
+          <div class="text-xs mt-2" style="color: var(--text-tertiary);">三种算法响应时间相近,Greedy 略优(重指距离)</div>
+        </div>
+
+        <!-- 图 6-3 路径总长度 -->
+        <div class="panel p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm font-semibold">图 6-3 总路径长度(km)</div>
+            <button class="btn-ghost"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
+          </div>
+          <svg viewBox="0 0 400 220" style="width:100%;">
+            <line x1="40" y1="180" x2="380" y2="180" stroke="#3A4258"/>
+            <line x1="40" y1="20" x2="40" y2="180" stroke="#3A4258"/>
+            <line x1="40" y1="60" x2="380" y2="60" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <line x1="40" y1="120" x2="380" y2="120" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <text x="35" y="184" text-anchor="end" font-size="9" fill="#5C6580">0</text>
+            <text x="35" y="124" text-anchor="end" font-size="9" fill="#5C6580">5</text>
+            <text x="35" y="64" text-anchor="end" font-size="9" fill="#5C6580">10</text>
+            <text x="35" y="24" text-anchor="end" font-size="9" fill="#5C6580">15</text>
+
+            <rect x="80" y="80" width="60" height="100" fill="url(#bar1)"/>
+            <text x="110" y="75" text-anchor="middle" font-size="11" fill="#3B82F6" font-weight="700">8.2</text>
+            <text x="110" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Hungarian</text>
+
+            <rect x="170" y="90" width="60" height="90" fill="url(#bar2)"/>
+            <text x="200" y="85" text-anchor="middle" font-size="11" fill="#F59E0B" font-weight="700">7.5★</text>
+            <text x="200" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Greedy</text>
+
+            <rect x="260" y="29" width="60" height="151" fill="url(#bar3)"/>
+            <text x="290" y="24" text-anchor="middle" font-size="11" fill="#9BA3B8" font-weight="700">12.6</text>
+            <text x="290" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Random</text>
+          </svg>
+          <div class="text-xs mt-2" style="color: var(--text-tertiary);">Greedy 路径最短(贪心特性),Hungarian 略长但更均衡</div>
+        </div>
+
+        <!-- 图 6-4 负载均衡度(论文核心) -->
+        <div class="panel p-4" style="border: 2px solid var(--success);">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm font-semibold flex items-center gap-1.5">图 6-4 负载均衡度(标准差,越低越好)<span class="badge badge-success">核心指标</span></div>
+            <button class="btn-ghost"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
+          </div>
+          <svg viewBox="0 0 400 220" style="width:100%;">
+            <line x1="40" y1="180" x2="380" y2="180" stroke="#3A4258"/>
+            <line x1="40" y1="20" x2="40" y2="180" stroke="#3A4258"/>
+            <line x1="40" y1="60" x2="380" y2="60" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <line x1="40" y1="120" x2="380" y2="120" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <text x="35" y="184" text-anchor="end" font-size="9" fill="#5C6580">0</text>
+            <text x="35" y="124" text-anchor="end" font-size="9" fill="#5C6580">2</text>
+            <text x="35" y="64" text-anchor="end" font-size="9" fill="#5C6580">4</text>
+            <text x="35" y="24" text-anchor="end" font-size="9" fill="#5C6580">6</text>
+
+            <rect x="80" y="143" width="60" height="37" fill="url(#bar1)"/>
+            <text x="110" y="138" text-anchor="middle" font-size="11" fill="#3B82F6" font-weight="700">1.21★</text>
+            <text x="110" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Hungarian</text>
+
+            <rect x="170" y="65" width="60" height="115" fill="url(#bar2)"/>
+            <text x="200" y="60" text-anchor="middle" font-size="11" fill="#F59E0B" font-weight="700">3.84</text>
+            <text x="200" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Greedy</text>
+
+            <rect x="260" y="29" width="60" height="151" fill="url(#bar3)"/>
+            <text x="290" y="24" text-anchor="middle" font-size="11" fill="#9BA3B8" font-weight="700">5.67</text>
+            <text x="290" y="200" text-anchor="middle" font-size="9" fill="#9BA3B8">Random</text>
+          </svg>
+          <div class="text-xs mt-2 font-semibold" style="color: var(--success);">★ Hungarian 负载均衡度优势显著(标准差仅 1.21,远低于贪心 3.84)</div>
+        </div>
+
+        <!-- 图 6-5 决策耗时(展示 trade-off) -->
+        <div class="panel p-4 col-span-2">
+          <div class="flex items-center justify-between mb-3">
+            <div class="text-sm font-semibold flex items-center gap-1.5">图 6-5 算法决策耗时(ms,展示 trade-off)<span class="badge badge-warning">权衡分析</span></div>
+            <button class="btn-ghost"><i data-lucide="download" class="w-3.5 h-3.5"></i></button>
+          </div>
+          <svg viewBox="0 0 800 200" style="width:100%;">
+            <line x1="60" y1="160" x2="780" y2="160" stroke="#3A4258"/>
+            <line x1="60" y1="20" x2="60" y2="160" stroke="#3A4258"/>
+            <line x1="60" y1="55" x2="780" y2="55" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <line x1="60" y1="90" x2="780" y2="90" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <line x1="60" y1="125" x2="780" y2="125" stroke="#252B3D" stroke-dasharray="2,2"/>
+            <text x="55" y="164" text-anchor="end" font-size="9" fill="#5C6580">0</text>
+            <text x="55" y="129" text-anchor="end" font-size="9" fill="#5C6580">500</text>
+            <text x="55" y="94" text-anchor="end" font-size="9" fill="#5C6580">1000</text>
+            <text x="55" y="59" text-anchor="end" font-size="9" fill="#5C6580">1500</text>
+            <text x="55" y="24" text-anchor="end" font-size="9" fill="#5C6580">2000</text>
+            <text x="40" y="100" text-anchor="middle" font-size="9" fill="#5C6580" transform="rotate(-90, 25, 90)">耗时 (ms)</text>
+
+            <!-- 横向柱 -->
+            <rect x="60" y="40" width="529" height="22" fill="url(#bar1)"/>
+            <text x="600" y="55" font-size="11" fill="#3B82F6" font-weight="700">1842 ms</text>
+            <text x="65" y="35" font-size="10" fill="#E6EAF2" font-weight="600">Hungarian</text>
+
+            <rect x="60" y="80" width="36" height="22" fill="url(#bar2)"/>
+            <text x="100" y="95" font-size="11" fill="#F59E0B" font-weight="700">125 ms ✓</text>
+            <text x="65" y="75" font-size="10" fill="#E6EAF2" font-weight="600">Greedy</text>
+
+            <rect x="60" y="120" width="3" height="22" fill="url(#bar3)"/>
+            <text x="70" y="135" font-size="11" fill="#9BA3B8" font-weight="700">8 ms</text>
+            <text x="65" y="115" font-size="10" fill="#E6EAF2" font-weight="600">Random</text>
+          </svg>
+          <div class="text-xs mt-2" style="color: var(--text-tertiary);">⚖ <span class="font-semibold text-white">Trade-off 分析:</span> Hungarian 决策耗时较长(1.8s),但仍在 NFR 阈值(2s)内,且换来了显著更优的完成率与负载均衡。</div>
+        </div>
+
+      </div>
+
+      <!-- 数据导出 -->
+      <div class="panel p-4 flex items-center justify-between">
+        <div class="text-sm" style="color: var(--text-secondary);">
+          <i data-lucide="database" class="w-4 h-4 inline mr-1.5"></i>
+          实验产生 30 条 <code class="mono px-2 py-0.5 rounded text-xs" style="background: var(--bg-tertiary); color: var(--text-primary);">experiment_runs</code> 记录
+        </div>
+        <div class="flex gap-2">
+          <button class="btn-ghost flex items-center gap-1.5"><i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i> 导出 CSV</button>
+          <button class="btn-ghost flex items-center gap-1.5"><i data-lucide="image" class="w-3.5 h-3.5"></i> 导出全部图表(PNG)</button>
+          <button class="btn-primary flex items-center gap-1.5"><i data-lucide="file-text" class="w-3.5 h-3.5"></i> 生成实验报告</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>

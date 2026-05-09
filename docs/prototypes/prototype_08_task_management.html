@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>任务管理 - 救灾中枢</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;background:#0a0e1a;color:#e8eaf0;min-height:100vh;}
+  .nav{background:#0f1424;border-bottom:1px solid #1f2942;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;}
+  .nav-left{display:flex;align-items:center;gap:32px;}
+  .logo{font-size:18px;font-weight:700;color:#5dd2ff;letter-spacing:1px;}
+  .nav-menu{display:flex;gap:24px;}
+  .nav-menu a{color:#8a92a8;text-decoration:none;font-size:14px;padding:6px 12px;border-radius:4px;}
+  .nav-menu a.active{color:#5dd2ff;background:rgba(93,210,255,.1);}
+  .nav-right{display:flex;align-items:center;gap:16px;font-size:13px;color:#8a92a8;}
+  .container{padding:24px;}
+  .breadcrumb{font-size:12px;color:#5e6478;margin-bottom:16px;}
+  .breadcrumb span{color:#5dd2ff;}
+  .layout{display:grid;grid-template-columns:1fr 460px;gap:20px;}
+  .left-col{display:flex;flex-direction:column;gap:16px;}
+  .tabs{background:#0f1424;border:1px solid #1f2942;border-radius:8px;padding:6px;display:flex;gap:4px;}
+  .tab{padding:10px 18px;border-radius:6px;cursor:pointer;font-size:13px;color:#8a92a8;transition:all .2s;}
+  .tab:hover{color:#e8eaf0;}
+  .tab.active{background:linear-gradient(135deg,#5dd2ff,#3a8fd1);color:#0a0e1a;font-weight:600;}
+  .tab-count{margin-left:6px;padding:1px 8px;background:rgba(255,255,255,.15);border-radius:10px;font-size:11px;}
+  .tab.active .tab-count{background:rgba(0,0,0,.2);}
+  .task-card{background:#0f1424;border:1px solid #1f2942;border-radius:10px;padding:18px;transition:all .2s;cursor:pointer;}
+  .task-card:hover{border-color:#5dd2ff;transform:translateY(-1px);}
+  .task-card.completed{opacity:.65;}
+  .task-card.high-priority{border-left:4px solid #ff8a8a;}
+  .task-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;}
+  .task-title{font-size:16px;font-weight:600;margin-bottom:6px;}
+  .task-id{font-size:12px;color:#5e6478;font-family:monospace;}
+  .priority{display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;}
+  .priority-high{background:rgba(255,138,138,.15);color:#ff8a8a;border:1px solid rgba(255,138,138,.3);}
+  .priority-mid{background:rgba(255,216,102,.15);color:#ffd866;border:1px solid rgba(255,216,102,.3);}
+  .priority-low{background:rgba(130,179,102,.15);color:#a3d077;border:1px solid rgba(130,179,102,.3);}
+  .status{display:inline-block;padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;margin-left:8px;}
+  .status-exec{background:rgba(93,210,255,.15);color:#5dd2ff;border:1px solid rgba(93,210,255,.3);}
+  .status-pending{background:rgba(255,170,102,.15);color:#ffaa66;border:1px solid rgba(255,170,102,.3);}
+  .status-completed{background:rgba(130,179,102,.15);color:#a3d077;border:1px solid rgba(130,179,102,.3);}
+  .task-meta{display:flex;gap:20px;font-size:12px;color:#8a92a8;margin-bottom:14px;}
+  .task-meta span strong{color:#e8eaf0;font-weight:500;}
+  .progress-wrap{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+  .progress{flex:1;height:8px;background:#1a2138;border-radius:4px;overflow:hidden;}
+  .progress-bar{height:100%;background:linear-gradient(90deg,#5dd2ff,#3a8fd1);border-radius:4px;}
+  .progress-bar.completed{background:#82b366;}
+  .progress-text{font-size:12px;color:#8a92a8;font-weight:500;}
+  .task-actions{display:flex;gap:14px;justify-content:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid #1a2138;}
+  .task-actions a{color:#5dd2ff;text-decoration:none;font-size:12px;}
+  .task-actions a.danger{color:#ff8a8a;}
+  .task-actions a:hover{text-decoration:underline;}
+  .form-panel{background:#0f1424;border:1px solid #1f2942;border-radius:10px;padding:24px;height:fit-content;position:sticky;top:24px;}
+  .form-title{font-size:16px;font-weight:600;margin-bottom:6px;}
+  .form-subtitle{font-size:12px;color:#8a92a8;margin-bottom:20px;}
+  .form-group{margin-bottom:16px;}
+  .form-label{font-size:12px;color:#8a92a8;margin-bottom:8px;display:block;}
+  .form-label .required{color:#ff8a8a;}
+  .form-input,.form-select{width:100%;background:#1a2138;border:1px solid #2a3350;color:#e8eaf0;padding:10px 14px;border-radius:6px;font-size:13px;outline:none;}
+  .form-input:focus,.form-select:focus{border-color:#5dd2ff;}
+  .radio-group{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .radio-item{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#1a2138;border:1px solid #2a3350;border-radius:6px;cursor:pointer;font-size:13px;transition:all .2s;}
+  .radio-item:hover{border-color:#5dd2ff;}
+  .radio-item.selected{background:rgba(93,210,255,.1);border-color:#5dd2ff;color:#5dd2ff;}
+  .map-area{height:160px;background:linear-gradient(135deg,#0a1228,#162342);border:1px dashed #2a3350;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#5e6478;font-size:13px;position:relative;overflow:hidden;}
+  .map-area::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle at 30% 40%,rgba(93,210,255,.1),transparent 40%),radial-gradient(circle at 70% 60%,rgba(130,179,102,.1),transparent 40%);}
+  .map-tools{position:absolute;bottom:8px;right:8px;display:flex;gap:6px;}
+  .map-tool{padding:4px 10px;background:rgba(15,20,36,.8);border:1px solid #2a3350;border-radius:4px;font-size:11px;cursor:pointer;color:#8a92a8;}
+  .coords-info{font-size:11px;color:#5e6478;margin-top:6px;}
+  .checkbox-group{display:flex;flex-wrap:wrap;gap:8px;}
+  .check-item{padding:6px 12px;background:#1a2138;border:1px solid #2a3350;border-radius:4px;font-size:12px;cursor:pointer;}
+  .check-item.checked{background:rgba(93,210,255,.15);border-color:#5dd2ff;color:#5dd2ff;}
+  .form-actions{display:flex;gap:10px;margin-top:24px;}
+  .btn{padding:11px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:500;}
+  .btn-secondary{background:transparent;border:1px solid #2a3350;color:#8a92a8;}
+  .btn-primary{flex:1;background:linear-gradient(135deg,#5dd2ff,#3a8fd1);color:#0a0e1a;font-weight:700;}
+  .btn-primary:hover{box-shadow:0 4px 16px rgba(93,210,255,.4);}
+  .filter-bar{display:flex;gap:10px;align-items:center;}
+  .filter-bar .btn{padding:8px 14px;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="nav">
+  <div class="nav-left">
+    <div class="logo">⚡ 救灾中枢</div>
+    <div class="nav-menu">
+      <a href="#">指挥工作台</a>
+      <a href="#">机器人管理</a>
+      <a href="#" class="active">任务管理</a>
+      <a href="#">态势感知</a>
+      <a href="#">复盘分析</a>
+      <a href="#">系统管理</a>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span>👤 commander001</span>
+  </div>
+</div>
+<div class="container">
+  <div class="breadcrumb">任务管理 / <span>任务列表</span></div>
+  <div class="layout">
+    <div class="left-col">
+      <div class="filter-bar">
+        <div class="tabs" style="flex:1;">
+          <div class="tab active">全部 <span class="tab-count">32</span></div>
+          <div class="tab">待分配 <span class="tab-count">5</span></div>
+          <div class="tab">执行中 <span class="tab-count">8</span></div>
+          <div class="tab">完成 <span class="tab-count">15</span></div>
+          <div class="tab">失败/取消 <span class="tab-count">4</span></div>
+        </div>
+      </div>
+
+      <div class="task-card high-priority">
+        <div class="task-head">
+          <div>
+            <div class="task-title">搜救任务:废墟 A 区</div>
+            <div class="task-id">T-2024-001 · 创建于 14:32</div>
+          </div>
+          <div>
+            <span class="priority priority-high">🔴 高</span>
+            <span class="status status-exec">● EXECUTING</span>
+          </div>
+        </div>
+        <div class="task-meta">
+          <span>📍 区域 <strong>(120.50, 30.20) ~ (120.55, 30.25)</strong></span>
+          <span>🤖 分配 <strong>UAV-001 · UGV-003</strong></span>
+          <span>⏱ 预计 <strong>15 分钟</strong></span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress"><div class="progress-bar" style="width:65%;"></div></div>
+          <div class="progress-text">65%</div>
+        </div>
+        <div class="task-actions">
+          <a>查看详情</a>
+          <a>人工改派</a>
+          <a class="danger">取消任务</a>
+        </div>
+      </div>
+
+      <div class="task-card">
+        <div class="task-head">
+          <div>
+            <div class="task-title">侦察任务:火点定位</div>
+            <div class="task-id">T-2024-002 · 创建于 14:50</div>
+          </div>
+          <div>
+            <span class="priority priority-mid">🟡 中</span>
+            <span class="status status-pending">○ 等待拍卖</span>
+          </div>
+        </div>
+        <div class="task-meta">
+          <span>📍 森林 B 区</span>
+          <span>🤖 分配 <strong>--</strong></span>
+          <span>⏱ SLA <strong>30 分钟</strong></span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress"><div class="progress-bar" style="width:0%;"></div></div>
+          <div class="progress-text">0%</div>
+        </div>
+        <div class="task-actions">
+          <a>查看详情</a>
+          <a>立即拍卖</a>
+          <a class="danger">取消</a>
+        </div>
+      </div>
+
+      <div class="task-card high-priority">
+        <div class="task-head">
+          <div>
+            <div class="task-title">搜救任务:废墟 D 区</div>
+            <div class="task-id">T-2024-004 · 创建于 14:55</div>
+          </div>
+          <div>
+            <span class="priority priority-high">🔴 高</span>
+            <span class="status status-exec">● EXECUTING</span>
+          </div>
+        </div>
+        <div class="task-meta">
+          <span>📍 (120.60, 30.30) ~ (120.65, 30.35)</span>
+          <span>🤖 分配 <strong>UAV-002 · UGV-001 · UGV-002</strong></span>
+          <span>⏱ 预计 <strong>20 分钟</strong></span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress"><div class="progress-bar" style="width:32%;"></div></div>
+          <div class="progress-text">32%</div>
+        </div>
+        <div class="task-actions">
+          <a>查看详情</a>
+          <a>人工改派</a>
+          <a class="danger">取消任务</a>
+        </div>
+      </div>
+
+      <div class="task-card completed">
+        <div class="task-head">
+          <div>
+            <div class="task-title">搜救任务:废墟 C 区</div>
+            <div class="task-id">T-2024-003 · 完成于 14:18</div>
+          </div>
+          <div>
+            <span class="priority priority-high">🔴 高</span>
+            <span class="status status-completed">✓ COMPLETED</span>
+          </div>
+        </div>
+        <div class="task-meta">
+          <span>📍 (120.45, 30.15) ~ (120.48, 30.18)</span>
+          <span>🤖 完成 <strong>UAV-002 · UGV-001</strong></span>
+          <span>⏱ 用时 <strong>12 分 35 秒</strong></span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress"><div class="progress-bar completed" style="width:100%;"></div></div>
+          <div class="progress-text">100%</div>
+        </div>
+        <div class="task-actions">
+          <a>查看详情</a>
+          <a>跳转复盘</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-panel">
+      <div class="form-title">📝 创建新任务</div>
+      <div class="form-subtitle">填写任务信息,系统将自动触发拍卖分配</div>
+      <div class="form-group">
+        <label class="form-label">任务名称 <span class="required">*</span></label>
+        <input class="form-input" placeholder="例如:搜救任务:废墟 E 区">
+      </div>
+      <div class="form-group">
+        <label class="form-label">任务类型 <span class="required">*</span></label>
+        <div class="radio-group">
+          <div class="radio-item selected">○ 搜救</div>
+          <div class="radio-item">○ 侦察</div>
+          <div class="radio-item">○ 物资运输</div>
+          <div class="radio-item">○ 巡逻</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">优先级 <span class="required">*</span></label>
+        <div class="radio-group" style="grid-template-columns:1fr 1fr 1fr;">
+          <div class="radio-item">○ 高</div>
+          <div class="radio-item selected">● 中</div>
+          <div class="radio-item">○ 低</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">目标区域(在地图上圈定) <span class="required">*</span></label>
+        <div class="map-area">
+          🗺 点击地图绘制区域
+          <div class="map-tools">
+            <span class="map-tool">⬛ 矩形</span>
+            <span class="map-tool">⬡ 多边形</span>
+            <span class="map-tool">✕ 清除</span>
+          </div>
+        </div>
+        <div class="coords-info">坐标:(120.50, 30.20) ~ (120.55, 30.25) · 面积 ≈ 5.0 km²</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">所需能力(多选)</label>
+        <div class="checkbox-group">
+          <span class="check-item checked">📷 摄像头</span>
+          <span class="check-item checked">🌡 红外</span>
+          <span class="check-item">🦮 嗅探</span>
+          <span class="check-item">🚑 救生</span>
+          <span class="check-item">📦 载货</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">SLA 截止时间</label>
+        <input class="form-input" value="📅 2026-04-26 18:00:00">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-secondary">取消</button>
+        <button class="btn btn-primary">创建并触发拍卖 →</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
