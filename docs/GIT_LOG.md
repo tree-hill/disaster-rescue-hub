@@ -24,6 +24,31 @@
 
 ## 提交记录
 
+### 2026-05-09 — P6.6 + P6.7 + P6.8（合并）
+
+- 任务：P6.6 PerceptionService + P6.7 自动派任务 + P6.8 vision_boost 联通；P6.4/P6.5（数据集 + GPU 训练）由用户在 Colab 独立完成
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P6.6+P6.7+P6.8 perception service + auto-rescue + vision_boost from blackboard
+- Commit hash：（待回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/perception/__init__.py（新增空 init）
+  - backend/app/perception/service.py（新增）：PerceptionService.process_image(robot_id, robot_code, position, detections, frame_id, inference_time_ms) — filter conf≥0.5（INV-5）→ 每条 detection 走 blackboard.fuse(key=f"{class_name}:{int(lat*100)}_{int(lng*100)}", ttl_sec=300, value 含 type/position/bbox) → push WS perception.detection（一帧一推送，整 detections 数组到 commander 房间）→ survivor conf≥0.8 调 _handle_high_confidence_survivor（TaskRepository.find_active_near 500m 邻域查 search_rescue 活跃任务，已存在 priority bump 回 1，否则 system 用户 TaskService.create 自动救援任务 type=search_rescue priority=1 circle radius_m=200 area_km2=0.126 sensors=[camera_4k] min_battery_pct=30；TaskService.create 内部 commit + publish task.created → P5.7 dispatch_trigger 自动 start_auction 形成「视觉发现→自动派任务→自动拍卖」端到端链）→ fire conf≥0.7 推 perception.high_confidence_alert(class_name=fire) WS（写 alerts 表留 P7）；常量 SURVIVOR_HIGH_CONF=0.8 / FIRE_HIGH_CONF=0.7 / SURVIVOR_DEDUP_RADIUS_KM=0.5 / AUTO_RESCUE_RADIUS_M=200 / AUTO_RESCUE_AREA_KM2=0.126 / AUTO_RESCUE_MIN_BATTERY_PCT=30
+  - backend/app/repositories/task.py（修改）：加 find_active_near(center_lat, center_lng, *, radius_km, types=None) — 拉 active 任务（PENDING/ASSIGNED/EXECUTING）+ 可选 type 过滤，Python haversine_km(target_area.center_point) ≤ radius_km 过滤，避免 PostGIS 依赖
+  - backend/app/schemas/perception.py（新增）：InferRequest(robot_id/image_base64/position) + InferResponse(detections=[Detection]/inference_time_ms=0)
+  - backend/app/api/v1/perception.py（新增）：POST /perception/infer require_permission("system:test")，_mock_infer(image_base64) → ([], 0) 占位（best.pt 落地时换 ultralytics model(image, conf=0.5, iou=0.45)），调 PerceptionService.process_image 验证主链路；frame_id={code}-{utc_yyyymmdd-hhmmss}-mock；robot 不存在 404_ROBOT_NOT_FOUND_001
+  - backend/app/api/router.py（修改）：include v1_perception.router
+  - backend/app/services/dispatch_service.py（修改）：P6.8 联通——filter 之后 solve 之前 nearby_survivor_count = len(get_blackboard().query_by_proximity(center=task_view.target_area.center_point, radius_m=VISION_PROXIMITY_RADIUS_M=200, type_filter="survivor", min_confidence=VISION_CONFIDENCE_THRESHOLD=0.8))，注入 compute_full_bid；per-task 一次查询，与 §5.4「不能用缓存的旧数据」对齐
+  - scripts/seed.py（修改）：commander 角色加 system:test 权限，已 re-seed
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：标记 P6.4/P6.5 为「Deferred 用户独立完成」；P6.6+P6.7+P6.8 合并完成；下一任务 P6.9 Mock 视觉数据流
+- 自检：20/20 全绿（A POST /perception/infer 4：401 / commander 200 mock 空 detections / robot 404；B 主链路 8：INV-5 conf<0.5 过滤 valid=2 / 黑板写入 smoke + survivor 各 1 / fuse 路径 is_fused=True / task.created 触发 / type=search_rescue priority=1；C 邻域去重 2：500m 内已存在任务 → 不新建 + priority bump 回 1；D fire 2：不建任务 + 黑板写 fire；E P6.8 dispatch 4：vision_boost_applied=True + factor=1.5 / 黑板空 → False；UAV-001 robot_state 注入 position=(30.225,120.525) IDLE 95% 通过 R7）；脚本验收后删除；`python -m pytest tests -q` 12/12 无回归 2.70s
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P6.3
 
 - 任务：P6.3 黑板 REST + WS

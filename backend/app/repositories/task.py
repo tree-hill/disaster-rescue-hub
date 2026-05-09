@@ -104,6 +104,47 @@ class TaskRepository:
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def find_active_near(
+        self,
+        center_lat: float,
+        center_lng: float,
+        *,
+        radius_km: float,
+        types: Sequence[str] | None = None,
+    ) -> list[Task]:
+        """查询「活跃」(status NOT IN 终态) 且 target_area.center_point 距 center
+        ≤ radius_km 的任务。
+
+        BUSINESS_RULES §5.3：高置信度幸存者自动派任务用 0.5 km 邻域去重判定。
+        实现：先按 status / type 过滤拉出活跃集合（量级 ≤ 数百），再 Python
+        haversine 过滤；target_area JSONB 没有几何索引，硬要 SQL 算地理距离需
+        PostGIS，毕设规模不引入。
+        """
+        from app.dispatch.rule_engine import haversine_km
+
+        stmt = select(Task).where(
+            Task.status.in_(("PENDING", "ASSIGNED", "EXECUTING"))
+        )
+        if types is not None:
+            stmt = stmt.where(Task.type.in_(list(types)))
+        rows = list((await self.session.execute(stmt)).scalars().all())
+
+        out: list[Task] = []
+        for t in rows:
+            ta = t.target_area or {}
+            cp = ta.get("center_point") if isinstance(ta, dict) else None
+            if not isinstance(cp, dict):
+                continue
+            try:
+                dist_km = haversine_km(
+                    center_lat, center_lng, float(cp["lat"]), float(cp["lng"])
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            if dist_km <= radius_km:
+                out.append(t)
+        return out
+
     async def find_paginated(
         self,
         *,

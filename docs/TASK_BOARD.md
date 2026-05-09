@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P6 视觉感知（P6.1~P6.3 完成）  
-当前任务：P6.4 YOLOv8 数据集准备（BUILD_ORDER §P6.4）  
+当前阶段：P6 视觉感知（P6.1~P6.3 + P6.6~P6.8 完成；P6.4/P6.5 推迟由用户在 Colab 完成）  
+当前任务：P6.9 Mock 视觉数据流（BUILD_ORDER §P6.9）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P6.3 黑板 REST + WS 完成（3 GET 路由 + WS blackboard.updated relay + seed 加 blackboard:read 三角色；35/35 自检全绿，pytest 12/12 无回归）。  
+备注：P6.6 PerceptionService + P6.7 自动派任务 + P6.8 vision_boost 联通 一次性合并完成（视觉发现→自动派任务→自动拍卖端到端链；20/20 自检全绿，pytest 12/12 无回归）。  
 
 ---
 
@@ -44,7 +44,12 @@
 
 ### To Do
 
-- [ ] P6.4 YOLOv8 数据集准备（BUILD_ORDER §P6.4）：下载 AIDER 数据集 + scripts/prepare_aider.py 拆分 train/val/test
+- [ ] P6.9 Mock 视觉数据流（BUILD_ORDER §P6.9）：UAV Agent 每 1Hz 调用 PerceptionService.process_image，从 AIDER 测试集随机抽图
+
+### Deferred（用户独立完成）
+
+- [ ] P6.4 YOLOv8 数据集准备：AIDER 下载 + 人工 BBox 标注 + 70/20/10 拆分 + data.yaml
+- [ ] P6.5 YOLOv8 训练：Google Colab T4 GPU 6-8h 训练 + best.pt mAP@0.5 ≥ 0.75；落地时只需替换 `app/api/v1/perception.py::_mock_infer`
 
 ### In Progress
 
@@ -52,6 +57,7 @@
 
 ### Done
 
+- [x] P6.6 + P6.7 + P6.8（合并）：PerceptionService.process_image filter conf≥0.5+黑板 fuse(ttl=300)+WS perception.detection 一帧一推+survivor conf≥0.8 自动派任务（500m 邻域 TaskRepository.find_active_near 去重，bump priority 或系统用户 TaskService.create→task.created 链 P5.7 自动拍卖）+fire conf≥0.7 WS perception.high_confidence_alert；TaskRepository.find_active_near(active+haversine 过滤)；schemas/perception.py + api/v1/perception.py POST /perception/infer require system:test；dispatch_service P6.8 联通 query_by_proximity(survivor 200m conf≥0.8) per-task 调；scripts/seed.py commander 加 system:test 已 re-seed；20/20 自检全绿（A POST infer 4 + B 主链路 8 + C 邻域去重 2 + D fire WS 2 + E vision_boost 4，UAV-001 robot_state 注入通过 R7）；pytest 12/12 无回归 2.70s（2026-05-09，Claude Code）
 - [x] P6.3 黑板 REST + WS：api/v1/blackboard.py 三 GET 路由（/entries 过滤+分页 + /entries/{key:path} 含 include_expired 404_BLACKBOARD_KEY_NOT_FOUND_001 + /stats），全 require_permission("blackboard:read") 数据源走内存 Blackboard live state；schemas/blackboard.py 加 BlackboardStats（total_entries/by_type/active_subscribers/avg_fusion_latency_ms/throughput_per_min）+ BlackboardEntryRead.id Optional；Blackboard 加 _write_times deque(2000) 60s 滑窗 throughput + _fuse_latencies_ms deque(200) 平均 + stats() 方法；ws/event_bridge.py 加 _relay_blackboard_updated（payload 6 字段 commander 房间）+ register_blackboard_relays(blackboard) 幂等；api/router.py include + main.py lifespan 注册；scripts/seed.py commander/admin/observer 三角色加 blackboard:read 并 re-seed；35/35 自检全绿（A 8 + B 7 + C 8 + D 11 + E 1）；pytest 12/12 无回归 3.17s（2026-05-09，Claude Code）
 - [x] P6.2 信息融合：communication/fusion.py（weighted_average 校验长度+sum>0 报 ValueError + resolve_conflict 时间 DESC+conf 平手 + fuse_inputs 主入口 → winner 同 type 加权 position/area_m2/detected_count(int 取整)/intensity max conf 投票/自由扩展保留 + loser weight=0 审计 + altitude_m/heading_deg 保留 + fused_confidence=max）；Blackboard.fuse 重写调 fuse_inputs（existing 作为单 FusionInput + 新写入合并；首次 fuse 等价 set+fused_from weight=1）；INV-5 仍守；33/33 自检全绿（A wavg 4 + B resolve 2 + C 同 type 加权 8 + D 类型冲突 5 + E 自由扩展 2 + F 增量融合 8 + G 类型冲突场景 3 + H INV-5 1；脚本验收后删除）；pytest 12/12 无回归 3.13s（2026-05-09，Claude Code）
 - [x] P6.1 黑板基础设施：schemas/blackboard.py（BlackboardValue/FusionSource/BlackboardEntryRead）+ repositories/blackboard.py（save/find_latest_by_key/find_active/delete_expired）+ communication/blackboard.py Blackboard 单例（内存 dict 主 + asyncio.create_task 异步落库 + INV-5 静默拒写 + TTL 三级优先级 + get/set/fuse/query/query_by_proximity/subscribe/cleanup_expired，haversine_km 复用 rule_engine）+ services/blackboard_cleanup.py BlackboardCleanupScanner 60s 一轮（仿 PendingAuctionScanner，interval<=0 no-op + start/stop 幂等）+ core/config.py blackboard_cleanup_interval_sec=60.0 + main.py lifespan 起停；32/32 自检全绿（A set/get+INV-5 4，B TTL 4，C query/proximity 3，D fuse 4，E subscribe 3，F cleanup 6，G DB 持久化 2，H scanner 生命周期 6；脚本验收后删除）；pytest 12/12 无回归（2026-05-09，Claude Code）

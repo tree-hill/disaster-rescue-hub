@@ -68,6 +68,7 @@ ROLES_DEF = [
             "robot:manage",
             "algorithm:switch",
             "blackboard:read",
+            "system:test",
         ],
     },
     {

@@ -49,8 +49,11 @@ from app.dispatch.algorithms import (
     AuctionAlgorithm,
     get_algorithm,
 )
+from app.communication.blackboard import get_blackboard
 from app.dispatch.bidding import (
     VISION_BOOST_FACTOR,
+    VISION_CONFIDENCE_THRESHOLD,
+    VISION_PROXIMITY_RADIUS_M,
     compute_full_bid,
 )
 from app.dispatch.rule_engine import (
@@ -351,9 +354,23 @@ class DispatchService:
                 latency_ms=latency_ms,
             )
 
-        # === 3) 计算 bids（vision_boost 暂传 0：P6.1 黑板未建）===
+        # === 3) 计算 bids（P6.8：黑板查附近高置信度幸存者，触发 vision_boost）===
+        # BUSINESS_RULES §1.3：仅 has_yolo=True 机器人且任务中心 200 m 内有
+        # confidence ≥ 0.8 的 survivor 条目时，base_score × 1.5。本服务在 filter
+        # 之后、solve 之前查一次黑板（per-task），与 BUSINESS_RULES §5.4「不能用缓存
+        # 的旧数据」一致。
+        nearby_survivor_count = len(
+            get_blackboard().query_by_proximity(
+                center=task_view.target_area.center_point,
+                radius_m=VISION_PROXIMITY_RADIUS_M,
+                type_filter="survivor",
+                min_confidence=VISION_CONFIDENCE_THRESHOLD,
+            )
+        )
         bids_map: dict[tuple[UUID, UUID], BidBreakdown] = {
-            (rv.id, task_view.id): compute_full_bid(rv, task_view, nearby_survivor_count=0)
+            (rv.id, task_view.id): compute_full_bid(
+                rv, task_view, nearby_survivor_count=nearby_survivor_count
+            )
             for rv in eligible
         }
 
