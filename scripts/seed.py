@@ -69,6 +69,8 @@ ROLES_DEF = [
             "algorithm:switch",
             "blackboard:read",
             "system:test",
+            "alert:read",
+            "alert:handle",
         ],
     },
     {
@@ -80,12 +82,19 @@ ROLES_DEF = [
             "user:manage",
             "system:admin",
             "blackboard:read",
+            "alert:read",
+            "alert:handle",
         ],
     },
     {
         "name": "observer",
         "description": "观察员：只读",
-        "permissions": ["task:read", "robot:read", "blackboard:read"],
+        "permissions": [
+            "task:read",
+            "robot:read",
+            "blackboard:read",
+            "alert:read",
+        ],
     },
 ]
 

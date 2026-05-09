@@ -7,10 +7,10 @@
 
 ## 当前阶段
 
-当前阶段：P6 视觉感知（P6.1~P6.3 + P6.6~P6.9 完成；P6.4/P6.5 推迟由用户在 Colab 完成；P6 阶段闭环）  
-当前任务：P7 前端完整可用（BUILD_ORDER §P7）  
+当前阶段：P7 态势感知 + 前端原型（P7.1 完成；P7.2+ 前端待办）  
+当前任务：P7.2 前端基础设施（BUILD_ORDER §P7.2）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P6.9 Mock 视觉数据流完成（RobotAgent._perception_tick + Mock detection 生成器；16/16 自检全绿，pytest 12/12 无回归）。  
+备注：P7.1 态势感知后端完成（KPIAggregator 1Hz + AlertEngine 12 条规则 + REST `/situation/kpi` `/alerts/*` + WS `kpi.snapshot` `alert.raised/acknowledged/ignored`；29/29 自检全绿，pytest 12/12 无回归）。  
 
 ---
 
@@ -44,7 +44,9 @@
 
 ### To Do
 
-- [ ] P7 前端完整可用（BUILD_ORDER §P7）：登录 / 工作台 / 任务 / 调度 / 黑板可视化 / 复盘等页面
+- [ ] P7.2 前端基础设施（BUILD_ORDER §P7.2）：axios 拦截器 / Zustand auth+ws store / 受保护路由
+- [ ] P7.3 6 大页面实现（BUILD_ORDER §P7.3）：Login / Cockpit / RobotManagement / TaskManagement / Blackboard / AlertCenter / Admin
+- [ ] P7.4 改派弹窗（BUILD_ORDER §P7.4）
 
 ### Deferred（用户独立完成）
 
@@ -56,6 +58,8 @@
 暂无。
 
 ### Done
+
+- [x] P7.1 态势感知后端：`app/situation/kpi_aggregator.py`（1Hz 聚合 online/total/completion_rate/avg_response_sec/battery_distribution/active_alerts/active_tasks → 缓存 + push_event 'kpi.snapshot' room=commander；fresh session per tick；REST 命中缓存返回）+ `app/situation/alert_engine.py`（12 条规则：fire_detected/survivor_high_confidence/low_battery/comm_lost/sensor_error/task_overdue/auction_failed/high_decision_latency/algorithm_switched/task_reassigned/task_cancelled/hitl_intervention；EventBus 订阅 8 类事件 + OverdueTaskScanner 60s 扫描 sla_deadline<now 任务 + 600s dedup；写库走 pg_advisory_xact_lock 串行化 ALERT-YYYY-NNN code 分配 + UNIQUE 兜底重试；FK violation 自动 null 化重试一次）；`app/repositories/alert.py` find_paginated 支持 severity/type/source/status(unack/ack/ignored)/时间窗/search 过滤 + critical→warn→info 排序；`app/services/alert_service.py` acknowledge/ignore/batch_acknowledge → bus.publish；`app/api/v1/situation.py` GET /situation/kpi（alert:read）+ `app/api/v1/alerts.py` GET /alerts list+detail / POST acknowledge / POST ignore / POST batch-acknowledge（alert:read / alert:handle）；`app/ws/event_bridge.py` 加 _relay_alert_raised(commander+admin) / _relay_alert_acknowledged / _relay_alert_ignored；`app/perception/service.py::_push_high_confidence_alert` 双发 EventBus 供 AlertEngine 订阅；`app/agents/robot_agent.py::_enter_fault` 双发 EventBus；`scripts/seed.py` commander/admin 加 alert:read+alert:handle，observer 加 alert:read（已 re-seed）；`app/main.py` lifespan startup register_alert_engine + 拉起 KPIAggregator(1Hz) + OverdueTaskScanner(60s)，shutdown 反序停；`app/core/config.py` 加 kpi_aggregator_enabled/interval_sec + alert_overdue_scan_interval_sec/dedup_window_sec；29/29 自检全绿（A 2 规则元数据 + B 5 EventBus 触发 11 条规则 + alert.raised 推送 11 次 + latency<=阈值不触发 + severity 校验 + code 形式 + C 2 OverdueScanner 触发+dedup + D 4 KPIAggregator 聚合+缓存 + E 13 REST 401/200/404/409/批量+admin 权限 + F 3 WS 转推房间路由）；脚本验收后删除；pytest 12/12 无回归 3.08s（2026-05-09，Claude Code）
 
 - [x] P6.9 Mock 视觉数据流：RobotAgent._perception_tick（has_yolo+enabled+IDLE/EXECUTING/RETURNING+tick%interval==0）调 PerceptionService.process_image；_mock_generate_detections 按 detection_rate 概率抽 0~1 条 + 4 类加权(survivor/fire/smoke/collapsed_building) + conf∈[0.6,0.95] + ±50m 偏移；frame_id={code}-mock-{tick:06d}；fresh session per call；core/config 加 mock_perception_enabled/tick_interval/detection_rate（默认全关）；不依赖 best.pt 或 AIDER；演示时只需 enabled=True + rate=0.1 即可看完整链路；16/16 自检全绿（A 4 跳过条件 + B 2 触发 + C 8 生成器 + D 2 端到端）；pytest 12/12 无回归 2.81s（2026-05-09，Claude Code）
 - [x] P6.6 + P6.7 + P6.8（合并）：PerceptionService.process_image filter conf≥0.5+黑板 fuse(ttl=300)+WS perception.detection 一帧一推+survivor conf≥0.8 自动派任务（500m 邻域 TaskRepository.find_active_near 去重，bump priority 或系统用户 TaskService.create→task.created 链 P5.7 自动拍卖）+fire conf≥0.7 WS perception.high_confidence_alert；TaskRepository.find_active_near(active+haversine 过滤)；schemas/perception.py + api/v1/perception.py POST /perception/infer require system:test；dispatch_service P6.8 联通 query_by_proximity(survivor 200m conf≥0.8) per-task 调；scripts/seed.py commander 加 system:test 已 re-seed；20/20 自检全绿（A POST infer 4 + B 主链路 8 + C 邻域去重 2 + D fire WS 2 + E vision_boost 4，UAV-001 robot_state 注入通过 R7）；pytest 12/12 无回归 2.70s（2026-05-09，Claude Code）

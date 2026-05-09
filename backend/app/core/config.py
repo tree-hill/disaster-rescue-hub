@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     # 设为 0 即禁用 scanner（pytest / 自检场景）。
     blackboard_cleanup_interval_sec: float = 60.0
 
+    # 态势感知（P7.1）
+    # KPIAggregator 1Hz 推送 kpi.snapshot；设为 0 即禁用 aggregator（pytest / 自检）。
+    kpi_aggregator_enabled: bool = True
+    kpi_aggregator_interval_sec: float = 1.0
+    # OverdueTaskScanner：sla_deadline < now 的任务每 N 秒扫一次；同任务
+    # dedup_window_sec 内不重复触发。设 0 禁用。
+    alert_overdue_scan_interval_sec: float = 60.0
+    alert_overdue_dedup_window_sec: float = 600.0
+
     # Mock 视觉数据流（P6.9）
     # 仅 has_yolo=True 的机器人触发；启用后 RobotAgent 每 N tick 调一次
     # PerceptionService.process_image（mock detection 生成器，不依赖 AIDER）。

@@ -32,6 +32,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.communication.blackboard import get_blackboard
+from app.core.event_bus import get_event_bus
 from app.repositories.task import TaskRepository
 from app.repositories.user import UserRepository
 from app.schemas.common import Detection, Position
@@ -252,15 +253,25 @@ class PerceptionService:
         auto_task_triggered: bool,
         task_id: str | None,
     ) -> None:
+        payload = {
+            "class_name": class_name,
+            "confidence": float(confidence),
+            "position": {"lat": position.lat, "lng": position.lng},
+            "source_robot_code": robot_code,
+            "auto_task_triggered": bool(auto_task_triggered),
+            "task_id": task_id,
+        }
         await push_event(
             "perception.high_confidence_alert",
-            {
-                "class_name": class_name,
-                "confidence": float(confidence),
-                "position": {"lat": position.lat, "lng": position.lng},
-                "source_robot_code": robot_code,
-                "auto_task_triggered": bool(auto_task_triggered),
-                "task_id": task_id,
-            },
+            payload,
             room="commander",
         )
+        # P7.1：双发到 EventBus，AlertEngine 据此触发 fire_detected /
+        # survivor_high_confidence 规则；publish 失败仅日志，不阻塞 WS 链路。
+        try:
+            await get_event_bus().publish("perception.high_confidence_alert", payload)
+        except Exception:
+            logger.exception(
+                "perception_alert_publish_failed",
+                extra={"class_name": class_name, "robot_code": robot_code},
+            )

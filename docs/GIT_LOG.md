@@ -24,6 +24,39 @@
 
 ## 提交记录
 
+### 2026-05-09 — P7.1
+
+- 任务：P7.1 态势感知后端
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P7.1 situation backend (KPI 1Hz aggregator + alert engine 12 rules + REST/WS)
+- Commit hash：（commit 后回填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - backend/app/situation/kpi_aggregator.py（新增）：KPIAggregator 1Hz 协程：聚合 → 缓存 → push_event 'kpi.snapshot' room=commander；fresh session per tick；get_or_refresh REST 入口（缓存为空同步聚合一次）；online_robots 用 row_number=1 取每 robot 最新 state；battery_distribution case 三桶 high≥60/30≤mid<60/low<30
+  - backend/app/situation/alert_engine.py（新增）：12 条规则元数据（rule_key→type/severity）；register_alert_engine 订阅 8 类 EventBus 事件；_create_alert_and_publish 用 pg_advisory_xact_lock(0x7A5C_0002, year) 串行化 ALERT-YYYY-NNN 分配；FK violation 自动 null 化重试一次；OverdueTaskScanner 60s 扫描 sla_deadline<now AND status NOT IN terminal 任务，600s dedup（进程内 dict）；handler 覆盖 fire_detected / survivor_high_confidence / low_battery / comm_lost / sensor_error / auction_failed / high_decision_latency(>5000ms) / algorithm_switched / task_reassigned / task_cancelled / hitl_intervention
+  - backend/app/situation/__init__.py（新增）：空模块标记
+  - backend/app/repositories/alert.py（新增）：find_paginated 支持 severity/type/source/status(unack/ack/ignored)/start_time/end_time/search/page/page_size，排序 critical→warn→info+raised_at DESC；count_active 命中 idx_alerts_unack 部分索引；max_year_seq 用 cast(substr(code, prefix_len+1) AS Integer) max；find_by_ids 用于 batch
+  - backend/app/services/alert_service.py（新增）：get/acknowledge/ignore/batch_acknowledge；commit 后 bus.publish；error code 404_ALERT_NOT_FOUND_001 / 409_ALERT_ALREADY_ACKED_001 / 409_ALERT_ALREADY_IGNORED_001
+  - backend/app/api/v1/situation.py（新增）：GET /situation/kpi require_permission alert:read
+  - backend/app/api/v1/alerts.py（新增）：GET /alerts list / GET /alerts/{id} / POST /alerts/{id}/acknowledge / POST /alerts/{id}/ignore / POST /alerts/batch-acknowledge；GET 用 alert:read，POST 用 alert:handle；batch 路由置于 /{id}/* 之前避免被 path 吞
+  - backend/app/schemas/alert.py（新增）：AlertRead / AlertNoteRequest / AlertIgnoreRequest / AlertBatchAcknowledgeRequest+Response
+  - backend/app/schemas/situation.py（新增）：BatteryDistribution / KPISnapshot
+  - backend/app/api/router.py（修改）：include v1_situation + v1_alerts
+  - backend/app/main.py（修改）：lifespan startup 加 register_alert_engine(bus) + KPIAggregator.start + OverdueTaskScanner.start；shutdown 反序停（kpi → overdue → blackboard_cleanup → pending_auction → bus）
+  - backend/app/ws/event_bridge.py（修改）：加 _relay_alert_raised(commander+admin) / _relay_alert_acknowledged / _relay_alert_ignored；register_ws_relays 订阅
+  - backend/app/perception/service.py（修改）：_push_high_confidence_alert push_event 后双发 bus.publish('perception.high_confidence_alert', payload) → AlertEngine 订阅
+  - backend/app/agents/robot_agent.py（修改）：_enter_fault 在 _emit_event 后双发 bus.publish('robot.fault_occurred', fault_payload)
+  - backend/app/core/config.py（修改）：加 kpi_aggregator_enabled=True / kpi_aggregator_interval_sec=1.0 / alert_overdue_scan_interval_sec=60.0 / alert_overdue_dedup_window_sec=600.0
+  - scripts/seed.py（修改）：commander/admin 加 alert:read+alert:handle，observer 加 alert:read；已 re-seed
+  - docs/DEV_MEMORY.md / docs/TASK_BOARD.md：P7.1 完成；下一任务 P7.2 前端基础设施
+- 自检：29/29 全绿（A 2 规则元数据 + B 5 EventBus 触发 11 条规则全落库 + alert.raised 推送 11 次 + latency<=阈值不触发 + severity 校验 + code 形式 + C 2 OverdueScanner 触发+dedup + D 4 KPIAggregator 聚合+字段+缓存 + E 13 REST 401/200/404/409/批量+admin 权限 + F 3 WS 转推房间路由）；脚本验收后删除；`python -m pytest tests -q` 12/12 无回归 3.08s
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-09 — P6.9
 
 - 任务：P6.9 Mock 视觉数据流

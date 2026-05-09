@@ -381,17 +381,26 @@ class RobotAgent:
                 },
             )
 
-        await self._emit_event(
-            "robot.fault_occurred",
-            {
-                "robot_id": str(self.robot_id),
-                "robot_code": self.code,
-                "fault_type": fault_type,
-                "severity": severity,
-                "message": message,
-                "fault_id": str(fault_id) if fault_id else None,
-            },
-        )
+        fault_payload = {
+            "robot_id": str(self.robot_id),
+            "robot_code": self.code,
+            "fault_type": fault_type,
+            "severity": severity,
+            "message": message,
+            "fault_id": str(fault_id) if fault_id else None,
+        }
+        await self._emit_event("robot.fault_occurred", fault_payload)
+        # P7.1：双发到 EventBus → AlertEngine 触发 low_battery / comm_lost /
+        # sensor_error 规则；publish 失败仅日志，不影响 FSM 与 WS 推送。
+        try:
+            from app.core.event_bus import get_event_bus
+
+            await get_event_bus().publish("robot.fault_occurred", fault_payload)
+        except Exception:
+            logger.exception(
+                "robot_fault_publish_failed",
+                extra={"robot_id": str(self.robot_id), "fault_type": fault_type},
+            )
 
     def _format_fault_message(self, fault_type: str) -> str:
         if fault_type == "low_battery":

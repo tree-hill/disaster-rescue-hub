@@ -70,6 +70,23 @@ async def _relay_intervention_recorded(payload: dict[str, Any]) -> None:
     await push_event("intervention.recorded", payload, room="admin")
 
 
+# ---------- P7.1 告警 WS 转推 ----------
+
+
+async def _relay_alert_raised(payload: dict[str, Any]) -> None:
+    """alert.raised → commander + admin 两房间（WS_EVENTS §7）。"""
+    await push_event("alert.raised", payload, room="commander")
+    await push_event("alert.raised", payload, room="admin")
+
+
+async def _relay_alert_acknowledged(payload: dict[str, Any]) -> None:
+    await push_event("alert.acknowledged", payload, room="commander")
+
+
+async def _relay_alert_ignored(payload: dict[str, Any]) -> None:
+    await push_event("alert.ignored", payload, room="commander")
+
+
 def register_ws_relays(bus: EventBus) -> None:
     """订阅本任务范围内的 WS 转推 handler。subscribe 自带去重，幂等。"""
     bus.subscribe("task.created", _relay_task_created)
@@ -84,6 +101,10 @@ def register_ws_relays(bus: EventBus) -> None:
     # P5.6 HITL 改派（commander 业务 + admin 审计）
     bus.subscribe("task.reassigned", _relay_task_reassigned)
     bus.subscribe("intervention.recorded", _relay_intervention_recorded)
+    # P7.1 告警 WS 转推
+    bus.subscribe("alert.raised", _relay_alert_raised)
+    bus.subscribe("alert.acknowledged", _relay_alert_acknowledged)
+    bus.subscribe("alert.ignored", _relay_alert_ignored)
 
 
 # ---------- P6.3 黑板 WS 转推 ----------

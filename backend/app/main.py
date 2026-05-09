@@ -23,6 +23,11 @@ from app.services.dispatch_trigger import (
     get_pending_auction_scanner,
     register_auto_trigger,
 )
+from app.situation.alert_engine import (
+    get_overdue_task_scanner,
+    register_alert_engine,
+)
+from app.situation.kpi_aggregator import get_kpi_aggregator
 from app.ws import handlers as ws_handlers
 from app.ws.broadcaster import get_broadcaster
 from app.ws.event_bridge import register_blackboard_relays, register_ws_relays
@@ -51,6 +56,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     register_blackboard_relays(get_blackboard())
     if settings.dispatch_auto_trigger_enabled:
         register_auto_trigger(bus)
+    register_alert_engine(bus)
     await bus.start()
     scanner = get_pending_auction_scanner(
         interval_sec=settings.dispatch_pending_scan_interval_sec
@@ -65,6 +71,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     )
     if settings.blackboard_cleanup_interval_sec > 0:
         await blackboard_cleanup.start()
+    overdue_scanner = get_overdue_task_scanner(
+        interval_sec=settings.alert_overdue_scan_interval_sec,
+        dedup_window_sec=settings.alert_overdue_dedup_window_sec,
+    )
+    if settings.alert_overdue_scan_interval_sec > 0:
+        await overdue_scanner.start()
+    kpi = get_kpi_aggregator(interval_sec=settings.kpi_aggregator_interval_sec)
+    if settings.kpi_aggregator_enabled and settings.kpi_aggregator_interval_sec > 0:
+        await kpi.start()
     if settings.mock_agents_enabled:
         await get_agent_manager().start_all()
         await get_broadcaster().start()
@@ -74,6 +89,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.mock_agents_enabled:
             await get_broadcaster().stop()
             await get_agent_manager().stop_all()
+        await kpi.stop()
+        await overdue_scanner.stop()
         await blackboard_cleanup.stop()
         await scanner.stop()
         await bus.stop()
