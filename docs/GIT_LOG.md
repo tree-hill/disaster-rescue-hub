@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P7.3 stage B — 4 inner pages + cockpit real data + vite port 5500
-- Commit hash：（commit 后回填）
+- Commit hash：9e1fd72
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
