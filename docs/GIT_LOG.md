@@ -30,8 +30,8 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P5.5 dispatch REST routes + HITL algorithm switch
-- Commit hash：（待回填）
-- 是否 push：是（待执行）
+- Commit hash：5d0218a
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - backend/app/api/v1/dispatch.py（新增）：POST /auction（task:create，返回含 bids 的 AuctionRead 201）+ GET /algorithm（task:read，{current, available}）+ POST /algorithm（algorithm:switch HITL，返回 {previous, current, intervention_id}）+ GET /auctions（分页 + task_id/algorithm/start_time/end_time 过滤）+ GET /auctions/{id}（含 bids 按 bid_value DESC）
