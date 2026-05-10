@@ -24,13 +24,31 @@
 
 ## 提交记录
 
+### 2026-05-10 - P8.5 论文素材：5 张算法对比图
+
+- 任务：P8.5 生成论文算法对比图（matplotlib PNG）
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P8.5 paper assets — 5 algorithm comparison charts (matplotlib)
+- Commit hash：（待填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - `backend/scripts/gen_paper_charts.py`：新文件，从 experiment_runs 表读取数据生成 5 张对比图
+  - `docs/paper_assets/fig1_completion_rate.png`：任务完成率对比
+  - `docs/paper_assets/fig2_response_time.png`：平均响应时间对比
+  - `docs/paper_assets/fig3_path_length.png`：总路径长度对比
+  - `docs/paper_assets/fig4_load_balance.png`：负载均衡标准差对比
+  - `docs/paper_assets/fig5_decision_latency.png`：决策延迟对比
+- 论文关键结论：Hungarian avg_path=19.654km（比 Greedy 低 2.8%），RANDOM load_std=0.610（比 Hungarian/Greedy 高 22%）
+
 ### 2026-05-10 - P8.4 前端实验面板接真实 API
 
 - 任务：P8.4 ExperimentPanel 实接 POST /experiments + GET /experiments/{id} + GET /scenarios
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P8.4 frontend experiment panel — real API integration + GET /scenarios endpoint
-- Commit hash：（待填）
+- Commit hash：8b7f026
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
