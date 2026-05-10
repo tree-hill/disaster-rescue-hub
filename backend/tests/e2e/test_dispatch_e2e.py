@@ -43,6 +43,16 @@ async def test_e2e_1_full_task_lifecycle(client, commander_headers):
     # 0) 准备 1 台 IDLE 机器人，足以拿单任务
     await seed_e2e_robot(code_suffix=f"E1-R-{uuid.uuid4().hex[:5]}")
 
+    bus = get_event_bus()
+    captured: list[tuple[str, dict]] = []
+    real_publish = bus.publish
+
+    async def _capture(evt_type: str, payload: dict) -> None:
+        captured.append((evt_type, dict(payload)))
+        await real_publish(evt_type, payload)
+
+    bus.publish = _capture  # type: ignore[assignment]
+
     # 1) POST /tasks 创建一个 < 1 km² 任务（避免网格分解干扰 auto-trigger）
     payload = {
         "name": f"E2E-1 {uuid.uuid4().hex[:6]}",
@@ -56,26 +66,36 @@ async def test_e2e_1_full_task_lifecycle(client, commander_headers):
             "robot_type": None,
         },
     }
-    resp = await client.post("/api/v1/tasks", json=payload, headers=commander_headers)
-    assert resp.status_code == 201, resp.text
-    task_body = resp.json()
-    task_id = uuid.UUID(task_body["id"])
-    # POST /tasks 返回 code 应已是 T-YYYY-NNN；E2E 清场只匹配 T-8888-*，
-    # 因此本测试不写 T-8888- 前缀，改用 task_id 自身追踪 + 在 teardown 清。
-    # 为保证 teardown 也能清这条记录，转手把 task code 改为 T-8888-* 前缀。
-    async with async_session_maker() as session:
-        t = await session.get(Task, task_id)
-        if t is not None:
-            t.code = f"T-8888-{uuid.uuid4().hex[:6].upper()}"
-            await session.commit()
-
-    # 2) 等 auto-trigger handler 跑完一轮 → 任务变 ASSIGNED
-    async def _is_assigned() -> bool:
+    try:
+        resp = await client.post("/api/v1/tasks", json=payload, headers=commander_headers)
+        assert resp.status_code == 201, resp.text
+        task_body = resp.json()
+        task_id = uuid.UUID(task_body["id"])
+        # POST /tasks 返回 code 应已是 T-YYYY-NNN；E2E 清场只匹配 T-8888-*，
+        # 因此本测试不写 T-8888- 前缀，改用 task_id 自身追踪 + 在 teardown 清。
+        # 为保证 teardown 也能清这条记录，转手把 task code 改为 T-8888-* 前缀。
         async with async_session_maker() as session:
             t = await session.get(Task, task_id)
-            return t is not None and t.status == "ASSIGNED"
+            if t is not None:
+                t.code = f"T-8888-{uuid.uuid4().hex[:6].upper()}"
+                await session.commit()
 
-    assert await wait_until(_is_assigned, timeout=10.0), "auto-trigger 未在 10s 内完成"
+        # 2) 等 auto-trigger handler 跑完一轮 → 任务变 ASSIGNED
+        async def _is_assigned() -> bool:
+            async with async_session_maker() as session:
+                t = await session.get(Task, task_id)
+                return t is not None and t.status == "ASSIGNED"
+
+        assert await wait_until(_is_assigned, timeout=10.0), "auto-trigger 未在 10s 内完成"
+    finally:
+        bus.publish = real_publish  # type: ignore[assignment]
+
+    status_events = [p for (t, p) in captured if t == "task.status_changed"]
+    assert len(status_events) == 1
+    assert status_events[0]["task_id"] == str(task_id)
+    assert status_events[0]["from_status"] == "PENDING"
+    assert status_events[0]["to_status"] == "ASSIGNED"
+    assert len(status_events[0]["assigned_robot_ids"]) == 1
 
     # 3) 验证 auction + bids + active assignment
     async with async_session_maker() as session:

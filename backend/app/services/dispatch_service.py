@@ -10,8 +10,8 @@
   （PENDING → ASSIGNED 状态转移）+ §4.1 / §4.5（algorithm_switch HITL 流程）。
 - DATA_CONTRACTS §1.10 / §1.11 / §1.9 / §1.12（auctions / bids / task_assignments
   / human_interventions 表）+ §4.7（BidBreakdown 结构）+ §4.8（before/after_state）。
-- WS_EVENTS §5：auction.started / auction.bid_submitted / auction.completed /
-  auction.failed / dispatch.algorithm_changed 五个事件。
+- WS_EVENTS §4 / §5：task.status_changed、auction.started、auction.bid_submitted、
+  auction.completed、auction.failed、dispatch.algorithm_changed 事件。
 
 设计取舍：
 - **数据合并三处来源构造 RobotEvalInput**：robots 表（is_active/type/capability）
@@ -22,12 +22,13 @@
   P5.5 POST /dispatch/algorithm 切换接口直接改这个全局；本任务只读不写。
 - **decision_latency_ms 测量边界**：从「数据已取齐 + filter 完毕」到「solve 返
   回」，纯算法决策时间，与论文 NFR 「< 2 秒」对应；不含 I/O / DB 写入。
-- **vision_boost 当前传 0**（P6.1 黑板未建）；compute_full_bid 已设计为整数注入
-  默认 0；写库时 `bids.vision_boost` 字段按实际 vision_boosted 标志存 1.5 / 1.0。
+- **vision_boost 来自黑板邻近幸存者信息**；compute_full_bid 通过
+  `nearby_survivor_count` 注入加成，写库时 `bids.vision_boost` 字段按实际
+  vision_boosted 标志存 1.5 / 1.0。
 - **事件 commit 后才 publish**：避免事务回滚后已发出 WS 幻觉，与 P4.5 task.* 同
   款模式（service 不直接调 WS，只调 event_bus.publish；bridge 转推到 commander）。
-- **不发 task.status_changed**：本任务范围外（WS_EVENTS §4 通用任务事件契约），
-  留给后续模块统一接入；此处仅完成 PENDING → ASSIGNED 的状态机转移本身。
+- **task.status_changed commit 后发布**：任务 PENDING → ASSIGNED 与 auction.completed
+  同样在事务提交后发出，避免前端收到回滚后的幻觉状态。
 """
 from __future__ import annotations
 
@@ -41,6 +42,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.manager import get_agent_manager
 from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
 from app.dispatch.algorithms import (
@@ -87,6 +89,7 @@ EVT_AUCTION_BID_SUBMITTED = "auction.bid_submitted"
 EVT_AUCTION_COMPLETED = "auction.completed"
 EVT_AUCTION_FAILED = "auction.failed"
 EVT_DISPATCH_ALGORITHM_CHANGED = "dispatch.algorithm_changed"
+EVT_TASK_STATUS_CHANGED = "task.status_changed"
 EVT_TASK_REASSIGNED = "task.reassigned"
 EVT_INTERVENTION_RECORDED = "intervention.recorded"
 
@@ -252,6 +255,32 @@ def _task_to_eval_input(task: Task) -> TaskEvalInput:
     )
 
 
+def _robot_to_live_eval_input(
+    robot: Robot,
+    agent: Any,
+    active_count: int,
+) -> RobotEvalInput:
+    """Build a RuleEngine view from a running RobotAgent.
+
+    The database robot_states table is written once per tick. During a busy demo,
+    an auction can run between two ticks, so the DB snapshot may still say IDLE
+    while the in-memory agent has already accepted another task. When agents are
+    running, the live agent state is the fresher source of truth for dispatch.
+    """
+    capability = RobotCapability.model_validate(robot.capability or {})
+    position = Position.model_validate(agent.position)
+    return RobotEvalInput(
+        id=robot.id,
+        is_active=bool(robot.is_active),
+        type=str(robot.type),  # type: ignore[arg-type]
+        fsm_state=str(agent.fsm_state),  # type: ignore[arg-type]
+        battery=float(agent.battery),
+        position=position,
+        capability=capability,
+        active_assignments_count=int(active_count),
+    )
+
+
 # ---------- DispatchService ----------
 
 
@@ -303,7 +332,8 @@ class DispatchService:
             - 无 winner（极端罕见，bids 全 INF）: auction.failed（reason=no_winner）
             - 有 winner: auction.started → auction.bid_submitted ×N → auction.completed
         """
-        task = await self.tasks.find_by_id(task_id)
+        stmt = select(Task).where(Task.id == task_id).with_for_update()
+        task = (await self.session.execute(stmt)).scalar_one_or_none()
         if task is None:
             raise _task_not_found(task_id)
         if task.status != "PENDING":
@@ -330,9 +360,16 @@ class DispatchService:
         robot_views: list[RobotEvalInput] = []
         # robot 列表中下标 → Robot ORM 对象的映射，后续要靠 winner_id 拿 robot.code
         view_to_robot: dict[UUID, Robot] = {}
+        agent_manager = get_agent_manager()
         for r in all_robots:
-            latest_state = await self.robot_states.find_latest_by_robot(r.id)
-            view = _robot_to_eval_input(r, latest_state, active_counts.get(r.id, 0))
+            live_agent = agent_manager.get(r.id) if agent_manager.started else None
+            if live_agent is not None:
+                view = _robot_to_live_eval_input(
+                    r, live_agent, active_counts.get(r.id, 0)
+                )
+            else:
+                latest_state = await self.robot_states.find_latest_by_robot(r.id)
+                view = _robot_to_eval_input(r, latest_state, active_counts.get(r.id, 0))
             robot_views.append(view)
             view_to_robot[r.id] = r
 
@@ -448,6 +485,11 @@ class DispatchService:
 
         # === 7) commit 之后发 WS 事件链 ===
         winner_robot = view_to_robot[winner_robot_id]
+        await self._sync_winner_agent(
+            winner_robot_id=winner_robot_id,
+            task=task,
+            task_view=task_view,
+        )
         await self._publish_started(
             auction=auction,
             task=task,
@@ -469,8 +511,49 @@ class DispatchService:
             total_bidders=len(eligible),
             latency_ms=latency_ms,
         )
+        await self._publish_task_status_changed(
+            task=task,
+            from_status="PENDING",
+            to_status="ASSIGNED",
+            assigned_robot_ids=[winner_robot_id],
+        )
 
         return auction
+
+    async def _sync_winner_agent(
+        self,
+        *,
+        winner_robot_id: UUID,
+        task: Task,
+        task_view: TaskEvalInput,
+    ) -> None:
+        """Hand the committed assignment to the running mock RobotAgent."""
+        manager = get_agent_manager()
+        if not manager.started:
+            return
+        agent = manager.get(winner_robot_id)
+        if agent is None:
+            logger.warning(
+                "dispatch_winner_agent_missing",
+                extra={"robot_id": str(winner_robot_id), "task_id": str(task.id)},
+            )
+            return
+
+        center = task_view.target_area.center_point
+        try:
+            agent.accept_assignment(
+                task_id=task.id,
+                target_position={
+                    "lat": float(center.lat),
+                    "lng": float(center.lng),
+                    "altitude_m": None,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "dispatch_winner_agent_sync_failed",
+                extra={"robot_id": str(winner_robot_id), "task_id": str(task.id)},
+            )
 
     # ---------- 失败路径 ----------
 
@@ -577,6 +660,25 @@ class DispatchService:
                 "vision_boost_factor": (
                     VISION_BOOST_FACTOR if winner_breakdown.vision_boosted else 1.0
                 ),
+            },
+        )
+
+    async def _publish_task_status_changed(
+        self,
+        *,
+        task: Task,
+        from_status: str,
+        to_status: str,
+        assigned_robot_ids: list[UUID],
+    ) -> None:
+        await self._publish(
+            EVT_TASK_STATUS_CHANGED,
+            {
+                "task_id": str(task.id),
+                "task_code": task.code,
+                "from_status": from_status,
+                "to_status": to_status,
+                "assigned_robot_ids": [str(rid) for rid in assigned_robot_ids],
             },
         )
 

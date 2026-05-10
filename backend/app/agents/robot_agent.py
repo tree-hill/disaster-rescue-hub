@@ -206,6 +206,47 @@ class RobotAgent:
     def clear_target_position(self) -> None:
         self.target_position = None
 
+    def accept_assignment(
+        self,
+        *,
+        task_id: UUID,
+        target_position: dict[str, float | None],
+    ) -> None:
+        """Accept an auction result and start executing the assigned task.
+
+        DispatchService commits the database assignment first, then calls this
+        method for the running mock agent. This closes the gap where an auction
+        produced a task_assignment but the robot stayed IDLE in memory forever.
+        """
+        if self.fsm_state == "RETURNING":
+            # R2 allows RETURNING robots to bid. Treat a win as interrupting the
+            # return trip and immediately accepting the new assignment.
+            self.transit("IDLE", reason=f"assignment_interrupt_return:{task_id}")
+        elif self.fsm_state not in {"IDLE", "BIDDING"}:
+            raise FSMTransitionError(
+                f"cannot accept assignment while robot is {self.fsm_state}"
+            )
+
+        if self.fsm_state == "IDLE":
+            self.transit("BIDDING", reason=f"assignment_received:{task_id}")
+        if self.fsm_state == "BIDDING":
+            self.transit("EXECUTING", reason=f"auction_won:{task_id}")
+
+        self.current_task_id = task_id
+        self.set_target_position(
+            float(target_position["lat"]),
+            float(target_position["lng"]),
+            (
+                float(target_position["altitude_m"])
+                if target_position.get("altitude_m") is not None
+                else None
+            ),
+        )
+        self._recall_user_id = None
+        self._recall_reason = None
+        self._recall_intervention_id = None
+        self._recall_started_at = None
+
     # ---------- 召回（P3.6） ----------
     def request_recall(
         self,
