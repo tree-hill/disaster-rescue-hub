@@ -25,6 +25,7 @@ import {
   listRobots,
   getRobot,
   recallRobot,
+  updateRobot,
   type FsmState,
   type RobotDetailRead,
   type RobotRead,
@@ -136,14 +137,28 @@ export function RobotManagement() {
   }, [rows]);
 
   const handleRecall = async (id: string) => {
-    const reason = window.prompt('召回原因（必填，至少 4 字）');
-    if (!reason || reason.length < 4) return;
+    const reason = window.prompt('召回原因（必填，至少 5 字）');
+    if (!reason || reason.trim().length < 5) return;
     try {
-      await recallRobot(id, reason);
+      await recallRobot(id, reason.trim());
       await refresh();
     } catch (e: unknown) {
       const m = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(e);
       alert(`召回失败：${m}`);
+    }
+  };
+
+  const handleQuickEdit = async (r: RobotRead) => {
+    const newName = window.prompt(`重命名 ${r.code}（当前：${r.name}）`, r.name);
+    if (newName == null) return;
+    const trimmed = newName.trim();
+    if (trimmed.length === 0 || trimmed === r.name) return;
+    try {
+      await updateRobot(r.id, { name: trimmed });
+      await refresh();
+    } catch (e: unknown) {
+      const m = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? String(e);
+      alert(`保存失败：${m}`);
     }
   };
 
@@ -302,7 +317,7 @@ export function RobotManagement() {
           </div>
 
           {/* 详情面板 */}
-          <RobotDetailPanel detail={detail} onRecall={handleRecall} />
+          <RobotDetailPanel detail={detail} onRecall={handleRecall} onQuickEdit={handleQuickEdit} />
         </div>
       </div>
     </AppShell>
@@ -325,7 +340,7 @@ function StatCard({
   );
 }
 
-function RobotDetailPanel({ detail, onRecall }: { detail: RobotDetailRead | null; onRecall: (id: string) => void }) {
+function RobotDetailPanel({ detail, onRecall, onQuickEdit }: { detail: RobotDetailRead | null; onRecall: (id: string) => void; onQuickEdit: (r: RobotRead) => void }) {
   if (!detail) {
     return (
       <div className="panel p-6 text-sm text-center" style={{ color: 'var(--text-tertiary)' }}>
@@ -391,8 +406,13 @@ function RobotDetailPanel({ detail, onRecall }: { detail: RobotDetailRead | null
       </Section>
 
       <div className="grid grid-cols-2 gap-2 mt-4">
-        <button className="btn-ghost flex items-center justify-center gap-1.5" style={{ padding: 10 }} onClick={() => alert('编辑机器人 — 占位（P8 实装）')}>
-          编辑
+        <button
+          className="btn-ghost flex items-center justify-center gap-1.5"
+          style={{ padding: 10 }}
+          onClick={() => onQuickEdit(detail)}
+          title="快速重命名（完整能力编辑请前往 /admin → 机器人注册）"
+        >
+          重命名
         </button>
         <button
           className="flex items-center justify-center gap-1.5"

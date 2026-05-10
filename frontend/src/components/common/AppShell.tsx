@@ -11,7 +11,7 @@
  * - 任务管理 → /tasks
  * - 协同通信 → /blackboard      （原型 09 标题为「共享黑板」，归在「协同通信」菜单下）
  * - 态势感知 → /alerts          （原型 10 告警中心，归在「态势感知」菜单下）
- * - 复盘中心 → /replay          （P8 实装，路由占位 → 暂时跳到 /cockpit）
+ * - 复盘中心 → /replay
  * - 管理后台 → /admin
  */
 import { Bell, ChevronDown, Moon, ShieldCheck } from 'lucide-react';
@@ -33,7 +33,7 @@ const NAV_ENTRIES: NavEntry[] = [
   { label: '任务管理', to: '/tasks' },
   { label: '协同通信', to: '/blackboard' },
   { label: '态势感知', to: '/alerts' },
-  { label: '复盘中心', to: '/replay', fallback: '/cockpit' },
+  { label: '复盘中心', to: '/replay' },
   { label: '管理后台', to: '/admin' },
 ];
 

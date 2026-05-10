@@ -24,6 +24,29 @@
 
 ## 提交记录
 
+### 2026-05-10 18:11 - P5 调度链路 Bug 修复（未提交）
+
+- 任务：修复拍卖、智能调度、任务分配到机器人执行链路的关键问题
+- 工具：Codex
+- 分支：当前工作区
+- Commit message：未提交
+- Commit hash：未提交
+- 是否 push：否
+- 远程分支：未执行
+- 主要修改：
+  - `backend/app/services/dispatch_service.py`：任务行锁防并发重复拍卖；AgentManager 运行时使用实时机器人状态；拍卖提交后同步获胜 Agent；发布 `task.status_changed`。
+  - `backend/app/agents/robot_agent.py`：新增 `accept_assignment`，让 IDLE/RETURNING 机器人接单后进入 EXECUTING。
+  - `backend/app/ws/event_bridge.py`：补齐 `task.status_changed` relay。
+  - `backend/tests/unit/test_robot_agent_assignment.py`、`backend/tests/unit/test_dispatch_agent_sync.py`、`backend/tests/e2e/test_dispatch_e2e.py`：补充接单执行、agent 同步、任务状态事件测试。
+- 自检：
+  - `cd backend; .venv\Scripts\python.exe -m pytest tests\unit tests\algorithms tests\e2e -q` 通过，15 passed。
+  - `cd backend; .venv\Scripts\python.exe -m ruff check app tests` 未通过，原因是环境未安装 ruff。
+- 回滚命令：
+  ```bash
+  git checkout -- backend/app/services/dispatch_service.py backend/app/agents/robot_agent.py backend/app/ws/event_bridge.py backend/tests/e2e/test_dispatch_e2e.py docs/DEV_MEMORY.md docs/TASK_BOARD.md docs/GIT_LOG.md
+  git clean -f backend/tests/unit/test_robot_agent_assignment.py backend/tests/unit/test_dispatch_agent_sync.py
+  ```
+
 ### 2026-05-10 - 拍卖链路 Bug 修复
 
 - 任务：auction_failed 根因修复 + 其他链路断点修复

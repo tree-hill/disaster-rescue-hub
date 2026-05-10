@@ -6,6 +6,38 @@
 
 ---
 
+#### 2026-05-10 18:11 - Codex - P5 调度链路 Bug 修复
+
+- 任务：修复拍卖成功后机器人未真正接单执行、并发重复拍卖风险、缺少任务状态事件的问题
+- 执行工具：Codex
+- 修改类型：fix
+- 涉及文件:
+  - `backend/app/services/dispatch_service.py`
+  - `backend/app/agents/robot_agent.py`
+  - `backend/app/ws/event_bridge.py`
+  - `backend/tests/unit/test_robot_agent_assignment.py`
+  - `backend/tests/unit/test_dispatch_agent_sync.py`
+  - `backend/tests/e2e/test_dispatch_e2e.py`
+- 主要变更:
+  - DispatchService 在拍卖开始时对任务行加锁，避免自动/手动/并发触发造成重复分配。
+  - AgentManager 运行时优先使用内存中的机器人实时状态参与规则过滤，减少 tick 状态滞后导致的错误候选。
+  - 拍卖提交成功后同步获胜 RobotAgent，使其进入 EXECUTING 并写入 current_task_id 与目标坐标。
+  - 补齐 task.status_changed 事件发布与 WebSocket relay，前端可收到 PENDING -> ASSIGNED。
+- 验证命令:
+  - `.venv\Scripts\python.exe -m pytest tests\unit tests\algorithms tests\e2e -q`
+  - `.venv\Scripts\python.exe -m ruff check app tests`
+- 验证结果:
+  - `15 passed in 1.16s`
+  - ruff 未安装，命令失败信息为 `No module named ruff`
+- Git 提交:
+  - commit message：未提交
+  - commit hash：未提交
+  - push 状态：未执行
+- 遗留问题:
+  - 尚未启动真实前端页面验证 WebSocket 展示层；当前已通过后端单元、算法与 E2E 测试覆盖调度链路。
+- 下一步建议:
+  - 在开启 mock_agents_enabled 的演示环境中触发一次任务创建，观察获胜机器人从 IDLE/RETURNING 进入 EXECUTING。
+
 ## 当前项目状态
 
 项目名称：disaster-rescue-hub  

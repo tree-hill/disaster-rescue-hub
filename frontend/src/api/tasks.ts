@@ -105,3 +105,13 @@ export async function listTaskAssignments(taskId: string): Promise<TaskAssignmen
   const r: AxiosResponse<TaskAssignmentRead[]> = await api.get(`/tasks/${taskId}/assignments`);
   return r.data;
 }
+
+export interface TaskDetailRead extends TaskRead {
+  assignments: TaskAssignmentRead[];
+  auctions: unknown[];
+}
+
+export async function getTaskDetail(id: string): Promise<TaskDetailRead> {
+  const r: AxiosResponse<TaskDetailRead> = await api.get(`/tasks/${id}`);
+  return r.data;
+}

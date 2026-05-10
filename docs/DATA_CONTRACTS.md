@@ -781,7 +781,46 @@ type Detection = {
     fire: number,
     smoke: number,
     collapsed_building: number
+  },
+
+  // P8.1 扩展（不新建 replay_snapshots / key_events 表，全部嵌入 summary JSONB）
+  // SnapshotRecorder 1Hz 录制，session 终态时一次性写入；体积上限由
+  // settings.replay_session_max_frames 控制（默认 1800 = 30 min）
+  snapshots: Snapshot[],
+  key_events: KeyEvent[]
+}
+
+// Snapshot：单帧系统状态（按 ts 升序）
+Snapshot = {
+  ts: ISO8601,
+  robots: {
+    robot_id: UUID,
+    code: string,
+    fsm_state: "IDLE"|"BIDDING"|"EXECUTING"|"RETURNING"|"FAULT",
+    position: { lat: number, lng: number, altitude_m?: number, heading_deg?: number } | null,
+    battery: number,                  // 0-100
+    current_task_id: UUID | null
+  }[],
+  tasks: {
+    task_id: UUID,
+    code: string,
+    status: "PENDING"|"ASSIGNED"|"EXECUTING"|"COMPLETED"|"FAILED"|"CANCELLED",
+    progress: number,                  // 0-100
+    assigned_robot_ids: UUID[]
+  }[],
+  blackboard: {
+    total_entries: number,
+    by_type: { [type: string]: number }   // 仅统计，避免 entries 全量进 JSONB
   }
+}
+
+// KeyEvent：关键事件时间线（按 ts 升序）
+KeyEvent = {
+  ts: ISO8601,
+  type: "task_completed"|"task_failed"|"task_cancelled"|"task_reassigned"
+      |"intervention"|"alert"|"auction_completed"|"recall",
+  description: string,
+  related_id: UUID | null
 }
 ```
 

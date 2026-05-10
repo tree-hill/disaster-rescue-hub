@@ -11,7 +11,7 @@
  * - /alerts               告警中心
  * - /admin                管理员（仅 admin 角色，权限 system:admin）
  *
- * Replay / Experiment 留 P8。
+ * Replay / Experiment 已在 /replay 内以双 Tab 实现。
  */
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 
@@ -21,6 +21,7 @@ import { AlertCenter } from '@/pages/AlertCenter';
 import { Blackboard } from '@/pages/Blackboard';
 import { Cockpit } from '@/pages/Cockpit';
 import { Login } from '@/pages/Login';
+import { Replay } from '@/pages/Replay';
 import { RobotManagement } from '@/pages/RobotManagement';
 import { TaskManagement } from '@/pages/TaskManagement';
 
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
       { path: '/tasks', element: <TaskManagement /> },
       { path: '/blackboard', element: <Blackboard /> },
       { path: '/alerts', element: <AlertCenter /> },
+      { path: '/replay', element: <Replay /> },
     ],
   },
   {

@@ -16,15 +16,14 @@
  */
 import {
   AlertTriangle,
-  Camera,
   CheckCircle2,
   Download,
-  Phone,
-  Radio,
+  ExternalLink,
   RefreshCw,
   Search,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   acknowledgeAlert,
@@ -71,6 +70,7 @@ function fmtTs(iso: string): string {
 }
 
 export function AlertCenter() {
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [severity, setSeverity] = useState<'' | AlertSeverity>('');
   const [type, setType] = useState('');
@@ -159,6 +159,31 @@ export function AlertCenter() {
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  const handleExport = () => {
+    if (items.length === 0) {
+      alert('当前页无数据可导出');
+      return;
+    }
+    const headers = ['code', 'severity', 'type', 'source', 'message', 'raised_at', 'acknowledged_at', 'is_ignored'];
+    const escape = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      headers.join(','),
+      ...items.map((a) =>
+        [a.code, a.severity, a.type, a.source, a.message, a.raised_at, a.acknowledged_at ?? '', a.is_ignored].map(escape).join(','),
+      ),
+    ];
+    const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `alerts-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <AppShell>
@@ -276,9 +301,9 @@ export function AlertCenter() {
           </button>
           <button
             className="btn-ghost flex items-center gap-1.5"
-            onClick={() => alert('导出功能 P8 实装')}
+            onClick={handleExport}
           >
-            <Download className="w-3.5 h-3.5" /> 导出
+            <Download className="w-3.5 h-3.5" /> 导出 CSV
           </button>
         </div>
 
@@ -427,7 +452,12 @@ export function AlertCenter() {
           </div>
 
           {/* 详情面板 */}
-          <DetailPanel alert={selected} onAck={handleAck} onIgnore={handleIgnore} />
+          <DetailPanel
+            alert={selected}
+            onAck={handleAck}
+            onIgnore={handleIgnore}
+            onCreateRescueTask={() => navigate('/tasks')}
+          />
         </div>
       </div>
     </AppShell>
@@ -468,9 +498,10 @@ interface DetailPanelProps {
   alert: AlertRead | null;
   onAck: (id: string) => void;
   onIgnore: (id: string) => void;
+  onCreateRescueTask: () => void;
 }
 
-function DetailPanel({ alert, onAck, onIgnore }: DetailPanelProps) {
+function DetailPanel({ alert, onAck, onIgnore, onCreateRescueTask }: DetailPanelProps) {
   if (!alert) {
     return (
       <div className="panel p-5 text-sm text-center" style={{ color: 'var(--text-tertiary)' }}>
@@ -478,13 +509,22 @@ function DetailPanel({ alert, onAck, onIgnore }: DetailPanelProps) {
       </div>
     );
   }
-  const yolo = (alert.payload as Record<string, unknown>)?.yolo_detection as
+  const payload = (alert.payload ?? {}) as Record<string, unknown>;
+  const yolo = payload.yolo_detection as
     | { class_name?: string; confidence?: number; source_robot?: string; position?: { lat: number; lng: number } }
     | undefined;
-  const sla = (alert.payload as Record<string, unknown>)?.sla_alert as
+  const sla = payload.sla_alert as
     | { task_code?: string; deadline?: string; overdue_min?: number }
     | undefined;
+  const fire = payload.fire as
+    | { area_m2?: number; spread_dir?: string; nearest_water_m?: number }
+    | undefined;
+  const isFireType = alert.type === 'fire_detected' || alert.type === 'survivor_detected';
   const status = alertStatus(alert);
+  // 将原始 payload 中暂未结构化的字段折叠成单行预览，避免「占位 —」误导用户
+  const otherPayload = Object.entries(payload).filter(
+    ([k]) => !['yolo_detection', 'sla_alert', 'fire'].includes(k),
+  );
 
   return (
     <div className="panel p-5">
@@ -550,23 +590,40 @@ function DetailPanel({ alert, onAck, onIgnore }: DetailPanelProps) {
         </SectionCard>
       )}
 
-      <Section title="影响范围（占位）">
-        <Row label="火点面积" value="—" />
-        <Row label="扩散方向" value="—" />
-        <Row label="距最近水源" value="—" />
-        {alert.related_task_id && (
+      {(fire || isFireType) && (
+        <SectionCard title="影响范围 (fire payload)" tint="warn">
+          <Row label="火点面积" value={fire?.area_m2 != null ? `${fire.area_m2} m²` : '—'} />
+          <Row label="扩散方向" value={fire?.spread_dir ?? '—'} />
+          <Row label="距最近水源" value={fire?.nearest_water_m != null ? `${fire.nearest_water_m} m` : '—'} />
+        </SectionCard>
+      )}
+
+      <Section title="关联实体">
+        {alert.related_task_id ? (
           <Row label="关联任务" value={alert.related_task_id.slice(0, 8)} mono valueColor="var(--accent-primary)" />
+        ) : (
+          <Row label="关联任务" value="—" />
         )}
-        {alert.related_robot_id && (
+        {alert.related_robot_id ? (
           <Row label="关联机器人" value={alert.related_robot_id.slice(0, 8)} mono />
+        ) : (
+          <Row label="关联机器人" value="—" />
         )}
       </Section>
+
+      {otherPayload.length > 0 && (
+        <Section title="其他 payload 字段">
+          {otherPayload.map(([k, v]) => (
+            <Row key={k} label={k} value={typeof v === 'object' ? JSON.stringify(v).slice(0, 60) : String(v)} mono />
+          ))}
+        </Section>
+      )}
 
       <div className="grid grid-cols-2 gap-2 mt-5">
         <button
           className="btn-ghost"
           style={{ padding: 11 }}
-          disabled={alert.is_ignored}
+          disabled={alert.is_ignored || !!alert.acknowledged_at}
           onClick={() => onIgnore(alert.id)}
         >
           忽略
@@ -574,32 +631,20 @@ function DetailPanel({ alert, onAck, onIgnore }: DetailPanelProps) {
         <button
           className="btn-primary flex items-center justify-center gap-1.5"
           style={{ padding: 11, background: 'var(--danger)' }}
-          disabled={!!alert.acknowledged_at}
+          disabled={!!alert.acknowledged_at || alert.is_ignored}
           onClick={() => onAck(alert.id)}
         >
           <CheckCircle2 className="w-4 h-4" /> 确认告警
         </button>
-        <button
-          className="btn-ghost col-span-2 flex items-center justify-center gap-1.5"
-          style={{ padding: 11 }}
-          onClick={() => alert && window.alert('派遣灭火任务 — 占位（P7.4 / 后续接 dispatch）')}
-        >
-          <Radio className="w-4 h-4" /> 派遣灭火任务
-        </button>
-        <button
-          className="btn-ghost flex items-center justify-center gap-1.5"
-          style={{ padding: 11 }}
-          onClick={() => window.alert('通知应急队 — 占位')}
-        >
-          <Phone className="w-4 h-4" /> 通知应急队
-        </button>
-        <button
-          className="btn-ghost flex items-center justify-center gap-1.5"
-          style={{ padding: 11 }}
-          onClick={() => window.alert('查看实时画面 — 占位')}
-        >
-          <Camera className="w-4 h-4" /> 实时画面
-        </button>
+        {(alert.type === 'fire_detected' || alert.type === 'survivor_detected') && (
+          <button
+            className="btn-ghost col-span-2 flex items-center justify-center gap-1.5"
+            style={{ padding: 11 }}
+            onClick={onCreateRescueTask}
+          >
+            <ExternalLink className="w-4 h-4" /> 前往任务管理派遣救援任务
+          </button>
+        )}
       </div>
     </div>
   );

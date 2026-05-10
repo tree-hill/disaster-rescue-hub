@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     alert_overdue_scan_interval_sec: float = 60.0
     alert_overdue_dedup_window_sec: float = 600.0
 
+    # 复盘录制（P8.1）
+    # SnapshotRecorder：1Hz 后台轮询，发现 ASSIGNED/EXECUTING 任务即开新 session，
+    # 全部任务终态后自动落库 replay_sessions。设 0 / False 禁用（pytest 默认关）。
+    replay_recorder_enabled: bool = True
+    replay_recorder_interval_sec: float = 1.0
+    # 单 session 录帧上限（防 summary JSONB 体积爆炸；30 分钟封顶）
+    replay_session_max_frames: int = 1800
+
     # Mock 视觉数据流（P6.9）
     # 仅 has_yolo=True 的机器人触发；启用后 RobotAgent 每 N tick 调一次
     # PerceptionService.process_image（mock detection 生成器，不依赖 AIDER）。

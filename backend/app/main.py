@@ -18,6 +18,10 @@ from app.core.config import settings
 from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
 from app.core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
+from app.replay.snapshot_recorder import (
+    get_snapshot_recorder,
+    register_snapshot_recorder,
+)
 from app.services.blackboard_cleanup import get_blackboard_cleanup_scanner
 from app.services.dispatch_trigger import (
     get_pending_auction_scanner,
@@ -57,6 +61,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if settings.dispatch_auto_trigger_enabled:
         register_auto_trigger(bus)
     register_alert_engine(bus)
+    snapshot_recorder = get_snapshot_recorder(
+        interval_sec=settings.replay_recorder_interval_sec,
+        max_frames=settings.replay_session_max_frames,
+    )
+    if (
+        settings.replay_recorder_enabled
+        and settings.replay_recorder_interval_sec > 0
+    ):
+        register_snapshot_recorder(bus, snapshot_recorder)
     await bus.start()
     scanner = get_pending_auction_scanner(
         interval_sec=settings.dispatch_pending_scan_interval_sec
@@ -80,6 +93,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     kpi = get_kpi_aggregator(interval_sec=settings.kpi_aggregator_interval_sec)
     if settings.kpi_aggregator_enabled and settings.kpi_aggregator_interval_sec > 0:
         await kpi.start()
+    if (
+        settings.replay_recorder_enabled
+        and settings.replay_recorder_interval_sec > 0
+    ):
+        await snapshot_recorder.start()
     if settings.mock_agents_enabled:
         await get_agent_manager().start_all()
         await get_broadcaster().start()
@@ -89,6 +107,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if settings.mock_agents_enabled:
             await get_broadcaster().stop()
             await get_agent_manager().stop_all()
+        await snapshot_recorder.stop()
         await kpi.stop()
         await overdue_scanner.stop()
         await blackboard_cleanup.stop()
