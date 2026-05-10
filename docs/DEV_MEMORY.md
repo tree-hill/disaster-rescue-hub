@@ -6,6 +6,41 @@
 
 ---
 
+#### 2026-05-10 - Claude Code - P8.2 实验运行器后端
+
+- 任务：P8.2 ExperimentRunner 后端实装
+- 执行工具：Claude Code
+- 修改类型：feat
+- 涉及文件:
+  - `backend/app/experiments/__init__.py`（新建）
+  - `backend/app/experiments/runner.py`（新建）
+  - `backend/app/repositories/experiment.py`（新建）
+  - `backend/app/schemas/experiment.py`（新建）
+  - `backend/app/api/v1/experiments.py`（新建）
+  - `backend/app/api/router.py`（加 v1_experiments.router）
+  - `scripts/seed.py`（commander/admin 加 experiment:run 权限）
+- 主要变更:
+  - ExperimentRunner.run_batch()：异步后台循环，N 算法 × M 次，每轮创建 10 个 X-前缀
+    测试任务 → start_auction → 收集指标 → 写 ExperimentRun → DELETE 测试任务（CASCADE
+    清除 auctions/bids/task_assignments）。
+  - 指标覆盖：completion_rate / avg_response_sec / total_path_km（haversine 距离之和）
+    / load_std_dev（25 台机器人分配数标准差）/ decision_latency_ms / raw_metrics。
+  - 内存 _BATCHES 字典跟踪批次状态（running/completed/failed）；GET /experiments/{id}
+    合并内存状态 + DB 结果。
+  - 4 个 REST 接口：POST /experiments（202 异步）/ GET /{batch_id}（状态+结果+统计）
+    / GET /{batch_id}/charts（ECharts 折线格式）/ GET /{batch_id}/export（CSV/JSON）
+  - compute_stats()：按算法汇总 avg/std；build_charts()：5 个指标图表，labels=Run 1..N，
+    每算法一条 dataset。
+- 验证命令:
+  - `.venv\Scripts\python.exe scripts\selfcheck_p8_2.py`
+  - `.venv\Scripts\python.exe -m pytest tests\unit tests\algorithms -q`
+- 验证结果:
+  - selfcheck_p8_2: 9/9 passed（含端到端 GREEDY × 2 runs，completion_rate=100%，任务清除 OK）
+  - pytest: 13 passed（无回归）
+- Git 提交: 待提交
+
+---
+
 #### 2026-05-10 18:11 - Codex - P5 调度链路 Bug 修复
 
 - 任务：修复拍卖成功后机器人未真正接单执行、并发重复拍卖风险、缺少任务状态事件的问题

@@ -44,12 +44,17 @@
 
 ### To Do
 
-- [ ] P8 实验复盘 + 论文素材（BUILD_ORDER §P8）：实验运行器、复盘页、对照实验、论文图表导出
+- [ ] P8.3 跑实验（BUILD_ORDER §P8.3）：2 场景 × 3 算法 × 10 次 = 60 runs，生成实验数据
+- [ ] P8.5 论文素材产出（BUILD_ORDER §P8.5）：截图 + 图表导出 → docs/paper_assets/
 
 ### Deferred（用户独立完成）
 
 - [ ] P6.4 YOLOv8 数据集准备：AIDER 下载 + 人工 BBox 标注 + 70/20/10 拆分 + data.yaml
 - [ ] P6.5 YOLOv8 训练：Google Colab T4 GPU 6-8h 训练 + best.pt mAP@0.5 ≥ 0.75；落地时只需替换 `app/api/v1/perception.py::_mock_infer`
+
+### Done (P8 追加)
+
+- [x] P8.2 实验运行器后端（Claude Code，2026-05-10）：ExperimentRunner.run_batch()（10 任务/run × 逐任务 start_auction × CASCADE 清除）+ ExperimentRunRepository + schemas（ExperimentBatchRequest/Status/ChartsResponse/compute_stats/build_charts）+ 4 REST 接口（POST 202 / GET 状态+runs+stats / GET charts / GET export）；commander/admin 加 experiment:run 权限；selfcheck 9/9；13 单测无回归。
 
 ### In Progress
 

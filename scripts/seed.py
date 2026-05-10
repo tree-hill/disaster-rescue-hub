@@ -74,6 +74,7 @@ ROLES_DEF = [
             "alert:read",
             "alert:handle",
             "replay:read",
+            "experiment:run",
         ],
     },
     {
@@ -88,6 +89,7 @@ ROLES_DEF = [
             "alert:read",
             "alert:handle",
             "replay:read",
+            "experiment:run",
         ],
     },
     {

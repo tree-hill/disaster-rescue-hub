@@ -7,6 +7,7 @@ from app.api.v1 import alerts as v1_alerts
 from app.api.v1 import auth as v1_auth
 from app.api.v1 import blackboard as v1_blackboard
 from app.api.v1 import dispatch as v1_dispatch
+from app.api.v1 import experiments as v1_experiments
 from app.api.v1 import perception as v1_perception
 from app.api.v1 import replay as v1_replay
 from app.api.v1 import robots as v1_robots
@@ -23,3 +24,4 @@ api_router.include_router(v1_perception.router)
 api_router.include_router(v1_situation.router)
 api_router.include_router(v1_alerts.router)
 api_router.include_router(v1_replay.router)
+api_router.include_router(v1_experiments.router)

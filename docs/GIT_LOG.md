@@ -24,6 +24,24 @@
 
 ## 提交记录
 
+### 2026-05-10 - P8.2 实验运行器后端
+
+- 任务：P8.2 ExperimentRunner + REST API
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P8.2 ExperimentRunner backend — batch experiment runner + 4 REST endpoints
+- Commit hash：（待填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - `backend/app/experiments/runner.py`：ExperimentRunner，每轮 10 个测试任务 + 拍卖 + 指标计算 + 清除
+  - `backend/app/repositories/experiment.py`：ExperimentRunRepository
+  - `backend/app/schemas/experiment.py`：ExperimentBatchRequest/Status/Charts/compute_stats/build_charts
+  - `backend/app/api/v1/experiments.py`：4 REST 接口（POST 202/GET 状态/GET charts/GET export）
+  - `backend/app/api/router.py`：注册 experiments router
+  - `scripts/seed.py`：commander/admin 加 experiment:run 权限
+  - `docs/DEV_MEMORY.md`、`docs/TASK_BOARD.md`：更新进度
+
 ### 2026-05-10 18:11 - P5 调度链路 Bug 修复
 
 - 任务：修复拍卖、智能调度、任务分配到机器人执行链路的关键问题
