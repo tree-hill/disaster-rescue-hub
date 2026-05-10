@@ -44,7 +44,8 @@ export type WSEventName =
   | 'robot.fault_occurred'
   | 'robot.recall_initiated'
   | 'robot.recall_completed'
-  | 'robot.state_changed';
+  | 'robot.state_changed'
+  | 'robot.position_updated';
 
 interface WSState {
   socket: Socket | null;

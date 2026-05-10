@@ -3,7 +3,7 @@
  *
  * 三栏布局：
  * - 左 w=72：机器人编队卡片（类型 Tab + 搜索 + 卡片列表）
- * - 中 flex-1：态势地图（SVG 网格 + 危险区 + 幸存者信号 + 任务网格 + 机器人）
+ * - 中 flex-1：React-Konva 态势地图（机器人 / 任务区 / 告警 / 测距 / 缩放平移）
  * - 右 w=80：任务 / 告警 / 日志 Tab + 创建按钮 + 任务卡片列表 + 底部告警
  *
  * 后端对接：
@@ -54,9 +54,11 @@ import {
 } from '@/api/dispatch';
 import { getRobot, listRobots, recallRobot, type FsmState } from '@/api/robots';
 import { listTasks, type TaskRead } from '@/api/tasks';
+import type { Position } from '@/api/robots';
 import { fetchKpi, type KPISnapshot } from '@/api/situation';
 import { AppShell } from '@/components/common/AppShell';
 import { ReassignDialog } from '@/components/common/ReassignDialog';
+import { CockpitMap, type CockpitMapRobot } from '@/components/map/CockpitMap';
 import { useWSStore } from '@/store/ws';
 
 interface RobotRow {
@@ -66,6 +68,8 @@ interface RobotRow {
   fsm: FsmState;
   battery: number;
   detail: string;
+  position: Position | null;
+  currentTaskId: string | null;
 }
 
 const TYPE_LABEL_RT: Record<'uav' | 'ugv' | 'usv', string> = {
@@ -119,6 +123,10 @@ export function Cockpit() {
   const [showAlgoSwitch, setShowAlgoSwitch] = useState(false);
   const [logEntries, setLogEntries] = useState<Array<{ ts: string; line: string }>>([]);
   const [paused, setPaused] = useState(false);
+  const [mapMode, setMapMode] = useState<'pan' | 'select' | 'measure'>('select');
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapResetKey, setMapResetKey] = useState(0);
+  const [mapSelection, setMapSelection] = useState<string | null>(null);
   const mapRef = useRef<HTMLDivElement | null>(null);
 
   const wsConnect = useWSStore((s) => s.connect);
@@ -143,6 +151,8 @@ export function Cockpit() {
             type: front,
             fsm: st?.fsm_state ?? 'IDLE',
             battery: st?.battery ?? 0,
+            position: st?.position ?? null,
+            currentTaskId: st?.current_task_id ?? null,
             detail: st
               ? `${st.fsm_state} · (${st.position.lat.toFixed(3)}, ${st.position.lng.toFixed(3)})`
               : `${TYPE_LABEL_RT[r.type]} · ${r.model ?? ''}`,
@@ -205,6 +215,30 @@ export function Cockpit() {
       wsAddListener<{ robot_id: string }>('robot.state_changed', () => {
         loadRobotsWithState();
       }),
+      wsAddListener<{
+        updates: Array<{
+          robot_id: string;
+          robot_code: string;
+          position: Position;
+          battery: number;
+          fsm_state: FsmState;
+        }>;
+      }>('robot.position_updated', (payload) => {
+        setRobots((prev) => {
+          const byId = new Map(payload.updates.map((u) => [u.robot_id, u]));
+          return prev.map((r) => {
+            const update = byId.get(r.id);
+            if (!update) return r;
+            return {
+              ...r,
+              fsm: update.fsm_state,
+              battery: update.battery,
+              position: update.position,
+              detail: `${update.fsm_state} · (${update.position.lat.toFixed(3)}, ${update.position.lng.toFixed(3)})`,
+            };
+          });
+        });
+      }),
       wsAddListener<{ robot_id: string }>('robot.recall_completed', () => {
         loadRobotsWithState();
       }),
@@ -228,6 +262,19 @@ export function Cockpit() {
       ground: robots.filter((r) => r.type === 'ground').length,
       marine: robots.filter((r) => r.type === 'marine').length,
     }),
+    [robots],
+  );
+  const mapRobots = useMemo<CockpitMapRobot[]>(
+    () =>
+      robots.map((r) => ({
+        id: r.id,
+        code: r.code,
+        type: r.type,
+        fsm: r.fsm,
+        battery: r.battery,
+        position: r.position,
+        currentTaskId: r.currentTaskId,
+      })),
     [robots],
   );
 
@@ -489,18 +536,61 @@ export function Cockpit() {
               <MapPin className="w-4 h-4" />
               <span className="text-sm font-semibold">态势地图</span>
               <span className="text-xs mono" style={{ color: 'var(--text-tertiary)' }}>
-                | 演示视图 · 真实地图待 P8 接入
+                | 实时态势 · {mapRobots.filter((r) => r.position).length}/{mapRobots.length} 坐标
               </span>
             </div>
             <div className="flex items-center gap-1">
-              <button className="btn-ghost" disabled title="平移（待 P8）"><Hand className="w-3.5 h-3.5" /></button>
-              <button className="btn-ghost" disabled title="选区（待 P8）"><Square className="w-3.5 h-3.5" /></button>
-              <button className="btn-ghost" disabled title="测距（待 P8）"><Ruler className="w-3.5 h-3.5" /></button>
+              <button
+                className="btn-ghost"
+                title="平移"
+                style={{ color: mapMode === 'pan' ? 'var(--accent-primary)' : undefined }}
+                onClick={() => setMapMode('pan')}
+              >
+                <Hand className="w-3.5 h-3.5" />
+              </button>
+              <button
+                className="btn-ghost"
+                title="选择"
+                style={{ color: mapMode === 'select' ? 'var(--accent-primary)' : undefined }}
+                onClick={() => setMapMode('select')}
+              >
+                <Square className="w-3.5 h-3.5" />
+              </button>
+              <button
+                className="btn-ghost"
+                title="测距"
+                style={{ color: mapMode === 'measure' ? 'var(--accent-primary)' : undefined }}
+                onClick={() => setMapMode('measure')}
+              >
+                <Ruler className="w-3.5 h-3.5" />
+              </button>
               <div className="w-px h-5 mx-1" style={{ background: 'var(--border-default)' }} />
-              <button className="btn-ghost" disabled><Minus className="w-3.5 h-3.5" /></button>
-              <span className="text-xs mono px-2" style={{ color: 'var(--text-secondary)' }}>100%</span>
-              <button className="btn-ghost" disabled><Plus className="w-3.5 h-3.5" /></button>
-              <button className="btn-ghost" disabled title="复位（待 P8）"><LocateFixed className="w-3.5 h-3.5" /></button>
+              <button
+                className="btn-ghost"
+                title="缩小"
+                onClick={() => setMapZoom((z) => Math.max(0.65, Number((z - 0.15).toFixed(2))))}
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-xs mono px-2" style={{ color: 'var(--text-secondary)' }}>{Math.round(mapZoom * 100)}%</span>
+              <button
+                className="btn-ghost"
+                title="放大"
+                onClick={() => setMapZoom((z) => Math.min(2.4, Number((z + 0.15).toFixed(2))))}
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                className="btn-ghost"
+                title="复位"
+                onClick={() => {
+                  setMapZoom(1);
+                  setMapResetKey((v) => v + 1);
+                  setMapSelection(null);
+                }}
+              >
+                <LocateFixed className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
 
@@ -508,7 +598,16 @@ export function Cockpit() {
             className="flex-1 relative overflow-hidden"
             style={{ background: 'radial-gradient(circle at 50% 50%, #1a2030 0%, #0F1419 100%)' }}
           >
-            <CockpitMapSvg />
+            <CockpitMap
+              robots={mapRobots}
+              tasks={tasks}
+              alerts={alerts}
+              mode={mapMode}
+              zoom={mapZoom}
+              resetKey={mapResetKey}
+              onZoomChange={setMapZoom}
+              onSelectionChange={setMapSelection}
+            />
             <div
               className="absolute top-3 left-3 panel p-3 text-xs space-y-1.5"
               style={{ background: 'rgba(26,31,46,0.9)', backdropFilter: 'blur(8px)' }}
@@ -549,6 +648,14 @@ export function Cockpit() {
                 危险区
               </div>
             </div>
+            {mapSelection && (
+              <div
+                className="absolute top-3 right-3 panel px-3 py-2 text-xs mono"
+                style={{ background: 'rgba(26,31,46,0.9)', backdropFilter: 'blur(8px)', color: 'var(--text-secondary)' }}
+              >
+                {mapSelection}
+              </div>
+            )}
           </div>
 
           <div
@@ -928,81 +1035,3 @@ function AlgorithmSwitchDialog({
     </div>
   );
 }
-
-/** 1:1 复刻 prototype_01 中央地图 SVG。 */
-function CockpitMapSvg() {
-  return (
-    <svg viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-      <defs>
-        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2A3142" strokeWidth="0.5" />
-        </pattern>
-        <radialGradient id="signal" cx="50%" cy="50%">
-          <stop offset="0%" stopColor="#10B981" stopOpacity="0.6" />
-          <stop offset="100%" stopColor="#10B981" stopOpacity="0" />
-        </radialGradient>
-        <radialGradient id="hazard" cx="50%" cy="50%">
-          <stop offset="0%" stopColor="#EF4444" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <rect width="800" height="600" fill="url(#grid)" />
-
-      <circle cx="600" cy="180" r="80" fill="url(#hazard)" />
-      <text x="600" y="180" textAnchor="middle" fontSize="11" fill="#EF4444" fontWeight="600">危险区</text>
-
-      <circle cx="200" cy="350" r="60" fill="url(#signal)" />
-      <circle cx="200" cy="350" r="4" fill="#10B981" />
-      <text x="200" y="375" textAnchor="middle" fontSize="10" fill="#10B981">幸存者信号</text>
-
-      <circle cx="450" cy="420" r="50" fill="url(#signal)" />
-      <circle cx="450" cy="420" r="4" fill="#10B981" />
-
-      <rect x="160" y="280" width="120" height="120" fill="none" stroke="#3B82F6" strokeWidth="1.5" strokeDasharray="4,4" />
-      <text x="220" y="275" textAnchor="middle" fontSize="10" fill="#3B82F6" fontWeight="600">T-018 · 60%</text>
-
-      <rect x="380" y="380" width="80" height="80" fill="none" stroke="#F59E0B" strokeWidth="1.5" strokeDasharray="4,4" />
-      <text x="420" y="375" textAnchor="middle" fontSize="10" fill="#F59E0B" fontWeight="600">T-021 · 35%</text>
-
-      <g transform="translate(220, 320)">
-        <circle r="14" fill="#1A1F2E" stroke="#60A5FA" strokeWidth="2" />
-        <path d="M -6 -2 L 6 -2 L 4 4 L -4 4 Z" fill="#60A5FA" />
-        <text y="28" textAnchor="middle" fontSize="9" fill="#60A5FA" fontWeight="600" fontFamily="monospace">UAV-003</text>
-      </g>
-
-      <g transform="translate(420, 410)">
-        <rect x="-12" y="-12" width="24" height="24" rx="3" fill="#1A1F2E" stroke="#A78BFA" strokeWidth="2" />
-        <rect x="-6" y="-6" width="12" height="12" rx="1" fill="#A78BFA" />
-        <text y="28" textAnchor="middle" fontSize="9" fill="#A78BFA" fontWeight="600" fontFamily="monospace">GND-001</text>
-      </g>
-
-      <g transform="translate(580, 200)">
-        <circle r="14" fill="#1A1F2E" stroke="#EF4444" strokeWidth="2" />
-        <circle r="20" fill="none" stroke="#EF4444" strokeWidth="1" strokeDasharray="3,3" opacity="0.8" />
-        <path d="M -6 -2 L 6 -2 L 4 4 L -4 4 Z" fill="#EF4444" />
-        <text y="28" textAnchor="middle" fontSize="9" fill="#EF4444" fontWeight="600" fontFamily="monospace">UAV-007 !</text>
-      </g>
-
-      <g transform="translate(80, 80)">
-        <rect x="-30" y="-15" width="60" height="30" rx="4" fill="#252B3D" stroke="#3A4258" strokeWidth="1" />
-        <text y="4" textAnchor="middle" fontSize="10" fill="#9BA3B8" fontWeight="600">基地 (5)</text>
-      </g>
-
-      <g transform="translate(520, 480)">
-        <polygon points="0,-12 10,8 -10,8" fill="#1A1F2E" stroke="#22D3EE" strokeWidth="2" />
-        <text y="22" textAnchor="middle" fontSize="9" fill="#22D3EE" fontWeight="600" fontFamily="monospace">MAR-002</text>
-      </g>
-
-      <path d="M 80 80 Q 150 200 220 320" fill="none" stroke="#60A5FA" strokeWidth="1" strokeDasharray="2,3" opacity="0.5" />
-      <path d="M 80 80 Q 250 200 420 410" fill="none" stroke="#A78BFA" strokeWidth="1" strokeDasharray="2,3" opacity="0.5" />
-
-      <g transform="translate(40, 560)">
-        <line x1="0" y1="0" x2="80" y2="0" stroke="#5C6580" strokeWidth="2" />
-        <line x1="0" y1="-3" x2="0" y2="3" stroke="#5C6580" strokeWidth="2" />
-        <line x1="80" y1="-3" x2="80" y2="3" stroke="#5C6580" strokeWidth="2" />
-        <text x="40" y="15" textAnchor="middle" fontSize="9" fill="#5C6580">100m</text>
-      </g>
-    </svg>
-  );
-}
-

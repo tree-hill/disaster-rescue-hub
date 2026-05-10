@@ -10,7 +10,7 @@
 当前阶段：P7 态势感知 + 前端原型（P7.1~P7.4 全部完成）  
 当前任务：P8 实验复盘 + 论文素材（BUILD_ORDER §P8）  
 任务来源：docs/BUILD_ORDER.md  
-备注：P7.4 改派弹窗完成：ReassignDialog 组件接 GET /tasks/{id}/assignments + GET /robots + POST /dispatch/reassign，从 Cockpit 任务卡和 TaskManagement 任务卡触发。  
+备注：P7.4 改派弹窗完成；P7.3 指挥台地图已由静态 SVG 占位升级为 React-Konva 实时态势地图。  
 
 ---
 
@@ -63,6 +63,8 @@
 暂无。
 
 ### Done
+
+- [x] P7.3 指挥台地图模块补齐（Codex，2026-05-11）：新增 `frontend/src/components/map/CockpitMap.tsx`，使用 React-Konva 渲染真实机器人位置、任务目标区与火点告警；支持平移、选择、测距、缩放、复位与选择浮层；`frontend/src/pages/Cockpit.tsx` 移除静态 SVG 地图，工具栏接入交互状态并从 `robots.latest_state.position`、`tasks.target_area`、`alerts.payload.yolo_detection.position` 生成地图输入；`frontend/src/store/ws.ts` 补齐 `robot.position_updated` 事件类型，指挥台收到批量位置更新后实时刷新机器人位置、电量与 FSM。验证：`cd frontend; npm.cmd run build` 通过。
 
 - [x] P5 调度链路 Bug 修复（Codex，2026-05-10）：修复拍卖 CLOSED + task ASSIGNED 后获胜机器人未进入 EXECUTING 的断点；DispatchService 提交成功后同步 RobotAgent.accept_assignment，写入 current_task_id 与目标坐标；拍卖前对任务行加锁避免并发重复分配；AgentManager 运行时优先使用内存实时状态参与规则过滤；补齐 task.status_changed 事件与 WS relay。后端 `pytest tests\unit tests\algorithms tests\e2e -q` 通过 15/15；ruff 未安装，无法执行静态检查。
 

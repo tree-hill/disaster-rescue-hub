@@ -6,6 +6,38 @@
 
 ---
 
+#### 2026-05-11 03:30 — Codex — P7.3 指挥台地图模块补齐
+
+- 任务：完成指挥台页面地图模块，将 P7.3 规划中的 React-Konva 态势地图从静态 SVG 占位补齐为实时交互组件
+- 执行工具：Codex
+- 修改类型：feat/docs
+- 涉及文件：
+  - `frontend/src/components/map/CockpitMap.tsx`
+  - `frontend/src/pages/Cockpit.tsx`
+  - `frontend/src/store/ws.ts`
+  - `docs/DEV_MEMORY.md`
+  - `docs/TASK_BOARD.md`
+  - `docs/GIT_LOG.md`
+- 主要变更：
+  - 新增 `CockpitMap` React-Konva 组件，按机器人、任务目标区、火点告警动态计算地图边界并投影到画布。
+  - 指挥台地图工具栏接入平移、选择、测距、缩放、复位；点击机器人/任务/告警可在地图浮层显示当前选择。
+  - 使用真实 `robots.latest_state.position`、`tasks.target_area`、`alerts.payload.yolo_detection.position` 渲染态势，不再使用静态 SVG 假数据。
+  - WebSocket 类型补齐 `robot.position_updated`，指挥台收到位置批量更新后即时刷新机器人位置、电量与 FSM。
+- 验证命令：
+  - `cd frontend; npm.cmd run build`
+- 验证结果：
+  - TypeScript 严格检查与 Vite 生产构建通过；仅保留 Vite CJS API、package type 与 chunk size 既有警告。
+- Git 提交：
+  - commit message：feat(cockpit): P7.3 implement realtime Konva map module
+  - commit hash：待提交
+  - push 状态：待执行
+- 遗留问题：
+  - 当前会话没有可调用的 Browser 自动化工具，未做浏览器截图级视觉回归；已通过前端构建验证类型与打包。
+- 下一步建议：
+  - 演示环境开启 mock agents 后，在 `/cockpit` 观察 `robot.position_updated` 驱动的实时移动效果，并补拍论文/答辩截图。
+
+---
+
 #### 2026-05-11 02:53 — Codex — P8 收尾检查与实验事件补齐
 
 - 任务：检查 P8 已规划功能缺口，并补齐实验运行实时事件与后端测试覆盖

@@ -24,6 +24,27 @@
 
 ## 提交记录
 
+### 2026-05-11 03:30 — P7.3 指挥台地图模块补齐
+
+- 任务：P7.3 指挥台页面地图模块，补齐 BUILD_ORDER 中“地图组件用 React-Konva”的规划项
+- 工具：Codex
+- 分支：main
+- Commit message：feat(cockpit): P7.3 implement realtime Konva map module
+- Commit hash：待提交
+- 是否 push：待执行
+- 远程分支：origin/main
+- 主要修改：
+  - `frontend/src/components/map/CockpitMap.tsx`：新增 React-Konva 实时态势地图，渲染机器人、任务区域、火点告警、比例尺与测距线。
+  - `frontend/src/pages/Cockpit.tsx`：移除静态 SVG 地图，接入平移/选择/测距/缩放/复位工具栏，并用真实 robots/tasks/alerts 数据驱动地图。
+  - `frontend/src/store/ws.ts`：补齐 `robot.position_updated` 事件类型，Cockpit 监听该事件后更新位置、电量与 FSM。
+  - `docs/DEV_MEMORY.md`、`docs/TASK_BOARD.md`、`docs/GIT_LOG.md`：同步开发记忆。
+- 自检：
+  - `cd frontend; npm.cmd run build` → passed
+- 回滚命令：
+  ```bash
+  git revert <commit-hash>
+  ```
+
 ### 2026-05-11 02:53 — P8 收尾检查与实验事件补齐
 
 - 任务：P8 实验复盘收尾检查，补齐实验 WS 进度事件与测试覆盖
