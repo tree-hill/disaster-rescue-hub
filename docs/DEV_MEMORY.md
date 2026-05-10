@@ -6,6 +6,22 @@
 
 ---
 
+#### 2026-05-10 - Claude Code - P8.4 前端实验面板联通真实 API
+
+- 任务：P8.4 前端 ExperimentPanel 接入真实后端
+- 涉及文件：`frontend/src/api/experiment.ts`（新建）、`frontend/src/pages/Replay.tsx`（更新 ExperimentPanel）、`backend/app/api/v1/scenarios.py`（新建 GET /scenarios）、`backend/app/api/router.py`（加 v1_scenarios）
+- 主要变更：
+  - ExperimentPanel 从静态 EXPERIMENT_ROWS 改为调用真实 API（GET /experiments/{id}）
+  - 初始加载 P8.3 已知批次（KNOWN_BATCH_ID）的真实数据，DB 有则显示真实值
+  - 回退静态 REAL_EXPERIMENT_STATS（从 60-run 实验测得）
+  - 「启动新实验」按钮调用 POST /experiments（202 异步），轮询进度
+  - 「导出 CSV」按钮调用 export API
+  - 5 个图表（StatChartPanel）使用实时 stats 数据
+  - GET /scenarios 端点供前端选择场景
+- 验证：npx tsc --noEmit exit=0
+
+---
+
 #### 2026-05-10 - Claude Code - P8.3 跑实验
 
 - 任务：P8.3 运行 2 批次 × 3 算法 × 10 次 = 60 条 ExperimentRun

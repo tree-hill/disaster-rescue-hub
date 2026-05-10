@@ -45,6 +45,7 @@
 ### To Do
 
 - [x] P8.3 跑实验（Claude Code，2026-05-10）：2 批次 × 3 算法 × 10 次 = 60 runs；Hungarian avg_path=19.654km / avg_lat=14.9ms / load_std=0.500；Greedy avg_path=20.211km；RANDOM load_std=0.610（负载最差）；completion_rate 三者均 100%（25 机器人空闲时低负载场景）。batch_id_1=7207fd42-be39-4fcd-9031-b72604e3586d；batch_id_2=575bc666-acda-4fbc-8b4a-4038023dc8d9
+- [x] P8.4 前端实验面板接真实 API（Claude Code，2026-05-10）：新增 frontend/src/api/experiment.ts；ExperimentPanel 从 hardcode 改为调用 POST /experiments + GET /experiments/{id}（3s 轮询）；加离线 fallback REAL_EXPERIMENT_STATS（真实 60-run 数据）；新增 GET /scenarios 端点（backend/app/api/v1/scenarios.py）；tsc --noEmit 0 errors。
 - [ ] P8.5 论文素材产出（BUILD_ORDER §P8.5）：截图 + 图表导出 → docs/paper_assets/
 
 ### Deferred（用户独立完成）

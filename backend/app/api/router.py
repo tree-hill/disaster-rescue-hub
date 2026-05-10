@@ -11,6 +11,7 @@ from app.api.v1 import experiments as v1_experiments
 from app.api.v1 import perception as v1_perception
 from app.api.v1 import replay as v1_replay
 from app.api.v1 import robots as v1_robots
+from app.api.v1 import scenarios as v1_scenarios
 from app.api.v1 import situation as v1_situation
 from app.api.v1 import tasks as v1_tasks
 
@@ -25,3 +26,4 @@ api_router.include_router(v1_situation.router)
 api_router.include_router(v1_alerts.router)
 api_router.include_router(v1_replay.router)
 api_router.include_router(v1_experiments.router)
+api_router.include_router(v1_scenarios.router)

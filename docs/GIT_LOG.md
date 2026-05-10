@@ -24,6 +24,21 @@
 
 ## 提交记录
 
+### 2026-05-10 - P8.4 前端实验面板接真实 API
+
+- 任务：P8.4 ExperimentPanel 实接 POST /experiments + GET /experiments/{id} + GET /scenarios
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P8.4 frontend experiment panel — real API integration + GET /scenarios endpoint
+- Commit hash：（待填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - `frontend/src/api/experiment.ts`：新文件，ExperimentBatchRequest/Status/Charts 类型 + 4 个 API 函数
+  - `frontend/src/pages/Replay.tsx`：ExperimentPanel 改为真实 API 集成（useEffect 加载已知批次、3s 轮询、handleStart 触发新批次）；离线 fallback REAL_EXPERIMENT_STATS（60-run 真实数据）
+  - `backend/app/api/v1/scenarios.py`：新文件，GET /scenarios 端点（供实验配置面板拉取可用场景）
+  - `backend/app/api/router.py`：注册 scenarios router
+
 ### 2026-05-10 - P8.3 跑实验（60 runs）
 
 - 任务：P8.3 2 批次 × 3 算法 × 10 次 = 60 条 ExperimentRun
