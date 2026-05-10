@@ -30,7 +30,7 @@
 - 工具：Claude Code
 - 分支：main
 - Commit message：feat: P8.5 paper assets — 5 algorithm comparison charts (matplotlib)
-- Commit hash：（待填）
+- Commit hash：88bac24
 - 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
