@@ -39,9 +39,9 @@
   - ruff：未执行，当前 venv 缺少 `ruff` 模块
   - frontend build：通过；仅保留 Vite CJS API、package type、chunk size 既有警告
 - Git 提交：
-  - commit message：待提交
-  - commit hash：待提交
-  - push 状态：待提交后 push
+  - commit message：fix(tasks): P7.3 link progress to robot map movement
+  - commit hash：f6a1401
+  - push 状态：是
 - 遗留问题：
   - mock 进度模型按“路程最多 30% + 抵达后每 tick 10%”推进，适合演示；真实机器人接入时应改为由机器人任务执行上报实际进度。
   - 后端静态检查仍受缺少 `ruff` 依赖影响。

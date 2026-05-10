@@ -29,9 +29,9 @@
 - 任务：修复新任务分配机器人后任务进度不随地图/Agent 执行变化的问题
 - 工具：Codex
 - 分支：main
-- Commit message：待提交
-- Commit hash：待提交
-- 是否 push：待提交后 push
+- Commit message：fix(tasks): P7.3 link progress to robot map movement
+- Commit hash：f6a1401
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - `backend/app/agents/robot_agent.py`：接单后记录任务起点/目标点，按地图位移写回 `tasks.progress`；抵达目标后驱动 `ASSIGNED -> EXECUTING`，执行完成后 `COMPLETED`、释放 active assignment、机器人返航。
