@@ -27,12 +27,15 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   cancelTask,
   createTask,
+  getTaskDetail,
   listTasks,
   type TaskCreatePayload,
+  type TaskDetailRead,
   type TaskRead,
   type TaskStatus,
   type TaskType,
 } from '@/api/tasks';
+import { getRobot, type RobotRead } from '@/api/robots';
 import { AppShell } from '@/components/common/AppShell';
 import { ReassignDialog } from '@/components/common/ReassignDialog';
 import { useWSStore } from '@/store/ws';
@@ -85,6 +88,7 @@ export function TaskManagement() {
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<TaskRead | null>(null);
+  const [detailTarget, setDetailTarget] = useState<TaskRead | null>(null);
 
   const wsConnect = useWSStore((s) => s.connect);
   const wsSubscribe = useWSStore((s) => s.subscribe);
@@ -131,8 +135,8 @@ export function TaskManagement() {
   }, [items, total]);
 
   const handleCancel = async (t: TaskRead) => {
-    const reason = window.prompt('取消任务原因（必填，至少 4 字）');
-    if (!reason || reason.length < 4) return;
+    const reason = window.prompt('取消任务原因（必填，至少 5 字）');
+    if (!reason || reason.trim().length < 5) return;
     try {
       await cancelTask(t.id, reason);
       await refresh();
@@ -196,6 +200,7 @@ export function TaskManagement() {
                   task={t}
                   onCancel={() => handleCancel(t)}
                   onReassign={() => setReassignTarget(t)}
+                  onDetail={() => setDetailTarget(t)}
                 />
               ))}
             </div>
@@ -236,11 +241,167 @@ export function TaskManagement() {
         onClose={() => setReassignTarget(null)}
         onSuccess={() => refresh()}
       />
+
+      {detailTarget && (
+        <TaskDetailDialog task={detailTarget} onClose={() => setDetailTarget(null)} />
+      )}
     </AppShell>
   );
 }
 
-function TaskCard({ task, onCancel, onReassign }: { task: TaskRead; onCancel: () => void; onReassign: () => void }) {
+function TaskDetailDialog({ task, onClose }: { task: TaskRead; onClose: () => void }) {
+  const [detail, setDetail] = useState<TaskDetailRead | null>(null);
+  const [robotMap, setRobotMap] = useState<Record<string, RobotRead>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    getTaskDetail(task.id)
+      .then(async (d) => {
+        if (!alive) return;
+        setDetail(d);
+        const robotIds = Array.from(new Set(d.assignments.map((a) => a.robot_id)));
+        const fetched = await Promise.all(
+          robotIds.map((id) => getRobot(id).catch(() => null)),
+        );
+        if (!alive) return;
+        const map: Record<string, RobotRead> = {};
+        fetched.forEach((r, i) => {
+          if (r) map[robotIds[i]] = r;
+        });
+        setRobotMap(map);
+      })
+      .catch(() => undefined)
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [task.id]);
+
+  const cp = task.target_area.center_point;
+  const status = STATUS_LABEL[task.status];
+  const pri = PRIORITY_LABEL[task.priority];
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-xl overflow-hidden flex flex-col"
+        style={{
+          width: 720,
+          maxWidth: '95vw',
+          maxHeight: '90vh',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border-default)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+          <div>
+            <div className="text-base font-bold flex items-center gap-2">
+              {task.name}
+              <span className={`badge ${pri.fg ? '' : ''}`} style={{ background: pri.bg, color: pri.fg }}>● {pri.label}</span>
+              <span className="badge" style={{ background: status.bg, color: status.fg }}>{status.label}</span>
+            </div>
+            <div className="text-xs mono mt-1" style={{ color: 'var(--text-tertiary)' }}>{task.code}</div>
+          </div>
+          <button className="btn-icon" onClick={onClose}><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="px-6 py-4 overflow-y-auto scroll-thin" style={{ flex: 1 }}>
+          <Section title="基础信息">
+            <DetailRow label="任务编号" value={task.code} mono />
+            <DetailRow label="类型" value={TYPE_LABEL[task.type]} />
+            <DetailRow label="优先级" value={`${pri.label} (${task.priority})`} />
+            <DetailRow label="状态" value={task.status} mono />
+            <DetailRow label="进度" value={`${Number(task.progress).toFixed(0)}%`} />
+            <DetailRow label="创建时间" value={new Date(task.created_at).toLocaleString('zh-CN', { hour12: false })} />
+            <DetailRow label="开始时间" value={task.started_at ? new Date(task.started_at).toLocaleString('zh-CN', { hour12: false }) : '—'} />
+            <DetailRow label="完成时间" value={task.completed_at ? new Date(task.completed_at).toLocaleString('zh-CN', { hour12: false }) : '—'} />
+            <DetailRow label="SLA 截止" value={task.sla_deadline ? new Date(task.sla_deadline).toLocaleString('zh-CN', { hour12: false }) : '无 SLA'} />
+          </Section>
+
+          <Section title="目标区域">
+            <DetailRow label="形状" value={task.target_area.type} />
+            <DetailRow label="中心点" value={`${cp.lat.toFixed(4)}, ${cp.lng.toFixed(4)}`} mono />
+            <DetailRow label="面积" value={`${task.target_area.area_km2.toFixed(3)} km²`} />
+            {task.target_area.radius_m && (
+              <DetailRow label="半径" value={`${task.target_area.radius_m} m`} />
+            )}
+          </Section>
+
+          <Section title="所需能力">
+            <DetailRow label="传感器" value={task.required_capabilities.sensors.join(', ') || '—'} />
+            <DetailRow label="负载" value={task.required_capabilities.payloads.join(', ') || '—'} />
+            <DetailRow label="最低电量" value={`${task.required_capabilities.min_battery_pct}%`} />
+            {task.required_capabilities.robot_type && (
+              <DetailRow label="机器人类型" value={task.required_capabilities.robot_type.join(', ')} />
+            )}
+          </Section>
+
+          <Section title="分配历史">
+            {loading && <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>加载中…</div>}
+            {!loading && (!detail || detail.assignments.length === 0) && (
+              <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>暂无分配记录</div>
+            )}
+            {!loading && detail?.assignments.map((a) => {
+              const r = robotMap[a.robot_id];
+              return (
+                <div
+                  key={a.id}
+                  className="rounded p-2.5 mb-2 text-xs flex items-center justify-between"
+                  style={{
+                    background: 'var(--bg-tertiary)',
+                    borderLeft: `3px solid ${a.is_active ? 'var(--success)' : 'var(--text-tertiary)'}`,
+                  }}
+                >
+                  <div>
+                    <div className="mono font-semibold">{r?.code ?? a.robot_id.slice(0, 8)}</div>
+                    <div style={{ color: 'var(--text-tertiary)' }} className="mt-0.5">
+                      分配于 {new Date(a.assigned_at).toLocaleString('zh-CN', { hour12: false })}
+                      {a.released_at && ` · 释放 ${new Date(a.released_at).toLocaleString('zh-CN', { hour12: false })}`}
+                    </div>
+                  </div>
+                  <span className={`badge ${a.is_active ? 'badge-success' : ''}`} style={!a.is_active ? { background: 'var(--bg-secondary)', color: 'var(--text-tertiary)' } : undefined}>
+                    {a.is_active ? '生效中' : '已释放'}
+                  </span>
+                </div>
+              );
+            })}
+          </Section>
+        </div>
+
+        <div className="px-6 py-3 border-t flex justify-end" style={{ borderColor: 'var(--border-subtle)' }}>
+          <button className="btn-ghost" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-5">
+      <div className="text-[11px] uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between items-center py-1.5 text-xs border-b last:border-b-0" style={{ borderColor: 'var(--border-subtle)' }}>
+      <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      <span className={mono ? 'mono' : ''} style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function TaskCard({ task, onCancel, onReassign, onDetail }: { task: TaskRead; onCancel: () => void; onReassign: () => void; onDetail: () => void }) {
   const pri = PRIORITY_LABEL[task.priority];
   const st = STATUS_LABEL[task.status];
   const completed = task.status === 'COMPLETED';
@@ -295,7 +456,7 @@ function TaskCard({ task, onCancel, onReassign }: { task: TaskRead; onCancel: ()
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-3 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
-        <button className="text-xs hover:underline" style={{ color: 'var(--accent-primary)' }} onClick={() => alert('详情 — P8 实装')}>
+        <button className="text-xs hover:underline" style={{ color: 'var(--accent-primary)' }} onClick={onDetail}>
           查看详情
         </button>
         {(task.status === 'EXECUTING' || task.status === 'ASSIGNED') && (
@@ -320,12 +481,16 @@ function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: ()
   const [centerLat, setCenterLat] = useState(30.225);
   const [centerLng, setCenterLng] = useState(120.525);
   const [radiusM, setRadiusM] = useState(300);
-  const [sensors, setSensors] = useState<string[]>(['camera_4k']);
+  const [sensors, setSensors] = useState<string[]>([]);
+  const [payloads, setPayloads] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const toggleSensor = (s: string) => {
     setSensors((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
+  };
+  const togglePayload = (p: string) => {
+    setPayloads((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -348,7 +513,7 @@ function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: ()
         },
         required_capabilities: {
           sensors,
-          payloads: [],
+          payloads,
           min_battery_pct: 20,
         },
       };
@@ -436,9 +601,9 @@ function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: ()
         </div>
       </Field>
 
-      <Field label="所需能力 (多选)">
+      <Field label="所需传感器 (多选，不选则不限)">
         <div className="flex flex-wrap gap-2">
-          {['camera_4k', 'thermal', 'lidar', 'sonar', 'rescue_kit'].map((s) => {
+          {['camera_4k', 'thermal', 'camera', 'lidar', 'sonar'].map((s) => {
             const sel = sensors.includes(s);
             return (
               <span
@@ -455,6 +620,34 @@ function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: ()
               </span>
             );
           })}
+        </div>
+        <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
+          UAV: camera_4k, thermal &nbsp;|&nbsp; UGV: camera, lidar &nbsp;|&nbsp; USV: camera, sonar
+        </div>
+      </Field>
+
+      <Field label="所需负载 (多选，不选则不限)">
+        <div className="flex flex-wrap gap-2">
+          {['rescue_kit', 'winch'].map((p) => {
+            const sel = payloads.includes(p);
+            return (
+              <span
+                key={p}
+                onClick={() => togglePayload(p)}
+                className="px-3 py-1.5 rounded text-xs cursor-pointer transition"
+                style={{
+                  background: sel ? 'rgba(16,185,129,0.15)' : 'var(--bg-tertiary)',
+                  border: `1px solid ${sel ? 'var(--success)' : 'var(--border-default)'}`,
+                  color: sel ? 'var(--success)' : 'var(--text-secondary)',
+                }}
+              >
+                {p}
+              </span>
+            );
+          })}
+        </div>
+        <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
+          UGV 携带: rescue_kit, winch
         </div>
       </Field>
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 # 让 scripts/seed.py 既能定位到 backend/app.*，又能让 pydantic-settings 读到 backend/.env
@@ -44,6 +45,7 @@ from app.models import (  # noqa: E402
     Robot,
     RobotGroup,
     Role,
+    RobotState,
     Scenario,
     User,
     UserRole,
@@ -71,6 +73,7 @@ ROLES_DEF = [
             "system:test",
             "alert:read",
             "alert:handle",
+            "replay:read",
         ],
     },
     {
@@ -84,6 +87,7 @@ ROLES_DEF = [
             "blackboard:read",
             "alert:read",
             "alert:handle",
+            "replay:read",
         ],
     },
     {
@@ -94,6 +98,7 @@ ROLES_DEF = [
             "robot:read",
             "blackboard:read",
             "alert:read",
+            "replay:read",
         ],
     },
 ]
@@ -331,6 +336,43 @@ async def upsert_scenario(
     await session.execute(stmt)
 
 
+async def seed_robot_states(session: AsyncSession, robots_def: list[dict]) -> int:
+    """为每台机器人插入初始 robot_states（幂等：已有任何状态行则跳过）。
+
+    dispatch_service 在找不到 robot_states 时回落到 position=(0,0)，导致所有机器人
+    R7 距离检查失败（~13500 km >> max_range_km）→ auction_failed/no_eligible_robot。
+    此函数确保即使 mock_agents_enabled=False（默认），拍卖仍能找到合格机器人。
+    """
+    seeded = 0
+    for defn in robots_def:
+        res = await session.execute(select(Robot.id).where(Robot.code == defn["code"]))
+        robot_id = res.scalar_one_or_none()
+        if robot_id is None:
+            continue
+        existing = await session.execute(
+            select(RobotState.id).where(RobotState.robot_id == robot_id).limit(1)
+        )
+        if existing.scalar_one_or_none() is not None:
+            continue  # 已有状态，跳过
+        state = RobotState(
+            robot_id=robot_id,
+            fsm_state="IDLE",
+            position={
+                "lat": defn["init_lat"],
+                "lng": defn["init_lng"],
+                "altitude_m": 0.0,
+            },
+            battery=Decimal("100.00"),
+            sensor_data={},
+            current_task_id=None,
+        )
+        session.add(state)
+        seeded += 1
+    if seeded:
+        await session.flush()
+    return seeded
+
+
 # ============================================================
 # 主流程
 # ============================================================
@@ -369,6 +411,9 @@ async def main() -> None:
 
         await upsert_scenario(session, SCENARIO_DEF, robots_def)
         print(f"[seed] scene  : {SCENARIO_DEF['name']}")
+
+        seeded_states = await seed_robot_states(session, robots_def)
+        print(f"[seed] robot_states: {seeded_states} 条初始状态已写入（幂等，已有则跳过）")
 
         await session.commit()
 

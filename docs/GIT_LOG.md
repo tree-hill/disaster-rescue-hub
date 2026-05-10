@@ -24,6 +24,40 @@
 
 ## 提交记录
 
+### 2026-05-10 - 拍卖链路 Bug 修复（未提交，本次 commit）
+
+- 任务：auction_failed 根因修复 + 其他链路断点修复
+- 工具：Claude Code
+- 主要修改：
+  - `frontend/src/pages/TaskManagement.tsx` 拆分传感器/负载选择，fix 取消原因 ≥ 5 字符
+  - `frontend/src/api/robots.ts` only_active → include_inactive 参数名修正
+  - `scripts/seed.py` 新增 seed_robot_states() 幂等函数
+
+### 2026-05-10 15:40 - P8 前端补齐（未提交）
+
+- 任务：P8 前端复盘中心与管理后台占位页面补齐
+- 工具：Codex
+- 分支：当前工作区
+- Commit message：未提交
+- Commit hash：未提交
+- 是否 push：否
+- 远程分支：未执行
+- 主要修改：
+  - `frontend/src/api/replay.ts`：新增复盘 REST 客户端与类型。
+  - `frontend/src/pages/Replay.tsx`：新增复盘中心页面，包含历史回放与算法对比实验双 Tab。
+  - `frontend/src/pages/Admin.tsx`：重写管理后台，移除非机器人菜单占位，补齐用户、角色、审计、场景、配置面板。
+  - `frontend/src/router/index.tsx`：注册 `/replay`。
+  - `frontend/src/components/common/AppShell.tsx`：复盘中心导航不再 fallback 到 `/cockpit`。
+  - `docs/DEV_MEMORY.md` / `docs/TASK_BOARD.md` / `docs/GIT_LOG.md`：记录本轮开发。
+- 自检：
+  - `cd frontend && npm.cmd run build` 通过。
+  - Browser 验证 `/replay`、`/admin` 页面可访问，管理后台子菜单可切换。
+- 回滚命令：
+  ```bash
+  git checkout -- frontend/src/components/common/AppShell.tsx frontend/src/pages/Admin.tsx frontend/src/router/index.tsx docs/DEV_MEMORY.md docs/TASK_BOARD.md docs/GIT_LOG.md
+  git clean -f frontend/src/api/replay.ts frontend/src/pages/Replay.tsx
+  ```
+
 ### 2026-05-10 — P7.4 改派弹窗
 
 - 任务：P7.4 改派弹窗（HITL）

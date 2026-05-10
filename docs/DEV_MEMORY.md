@@ -27,6 +27,54 @@ P6.3 黑板 REST + WS（`api/v1/blackboard.py` 三路由：GET /blackboard/entri
 
 ---
 
+### 2026-05-10 - Claude Code - 拍卖链路 Bug 修复
+
+- 任务: 诊断并修复 `auction_failed / no_eligible_robot` + 其他链路断点
+- 根因分析:
+  1. **任务创建表单传感器/负载混用**：`CreateForm` 把 `rescue_kit`（UGV **负载**）列在传感器选项中，且 default `sensors=['camera_4k']` 改为 `[]`。表单允许同时选 UAV/UGV/USV 专属传感器，组合后没有任何单台机器人能满足，导致规则引擎 R5 过滤所有 25 台 → `missing_sensor: 25` → `no_eligible_robot`。
+  2. **前端 `only_active` 参数名不匹配**：`frontend/src/api/robots.ts` 发送 `?only_active=...`，但后端 `/robots` 仅识别 `include_inactive`（语义相反）。Admin 面板无法正确筛选非活跃机器人。
+  3. **取消任务原因长度校验不一致**：前端 prompt 检查 `< 4` 字符但后端要求 ≥ 5（`RECALL_REASON_MIN_LEN`）。
+  4. **seed.py 未补充初始 robot_states**（幂等保障）：robots 已有 690999 行 state 数据（agents 曾运行），但如果 fresh 部署时 agents 未运行 (`MOCK_AGENTS_ENABLED=False` 默认关闭)，所有机器人 fallback position=(0,0) → 杭州 ~13500km → R7 全部 out_of_range。
+- 修复:
+  - `frontend/src/pages/TaskManagement.tsx`: 拆分传感器/负载选择（传感器 `['camera_4k','thermal','camera','lidar','sonar']` + 负载 `['rescue_kit','winch']`，各自独立 state + 提示文案说明每类对应机器人类型）；cancel 原因校验改为 `trim().length < 5`。
+  - `frontend/src/api/robots.ts`: `listRobots` 内部把 `only_active` → `include_inactive=!only_active` 再发请求，保持上层调用接口不变。
+  - `scripts/seed.py`: 新增 `seed_robot_states()` 函数（幂等，已有任何 state 则跳过），为每台机器人插入初始状态（fsm=IDLE, battery=100, position=init_lat/lng，altitude_m=0）。
+
+### 2026-05-10 15:40 - Codex - P8 frontend replay/admin completion
+
+- 任务: 结合 `docs/prototypes/prototype_04_replay.html`、`prototype_05_experiment.html`、`prototype_06_admin.html`，补齐前端复盘中心与管理后台占位页面。
+- 执行工具: Codex
+- 修改类型: feat(frontend)
+- 涉及文件:
+  - `frontend/src/api/replay.ts`
+  - `frontend/src/pages/Replay.tsx`
+  - `frontend/src/pages/Admin.tsx`
+  - `frontend/src/router/index.tsx`
+  - `frontend/src/components/common/AppShell.tsx`
+- 主要变更:
+  - 新增 Replay API 客户端，对接 `/replay/sessions`、`/replay/sessions/{id}`、`/snapshots`、`/key-events`，并补齐前端类型。
+  - 新增 `/replay` 页面，包含“历史回放 / 算法对比实验”双 Tab；历史回放接真实复盘接口，空数据或接口失败时使用原型同构 mock 数据兜底；支持会话列表、回放地图、时间轴、关键事件、汇总指标。
+  - 算法对比实验按 prototype_05 实装配置区、进度区、三算法指标卡和 5 张论文图表风格的对比图。
+  - 管理后台移除 PlaceholderPanel，保留机器人注册真实列表，并补齐用户管理、角色权限、审计日志、场景剧本、系统配置五个可用面板；审计日志聚合 alerts/tasks/replay 数据，接口失败时优雅空态。
+  - `/replay` 路由正式接入，顶导航复盘中心不再 fallback 到 `/cockpit`。
+- 验证命令:
+  - `cd frontend && npm.cmd run build`
+  - Browser: 登录 `commander001/password123` 后访问 `http://127.0.0.1:5500/replay`
+  - Browser: 登录 `admin001/password123` 后访问 `http://127.0.0.1:5500/admin`，切换用户管理、角色权限
+- 验证结果:
+  - `npm.cmd run build` 通过；Vite 仅输出 CJS API / package type 非阻断警告。
+  - `/replay` 可渲染会话列表、回放时间轴、关键事件、汇总指标。
+  - `/admin` 可渲染机器人注册、用户管理、角色权限等非占位内容。
+- Git 提交:
+  - commit message: 未提交
+  - commit hash: 未提交
+  - push 状态: 未执行
+- 遗留问题:
+  - 后端 `/experiments` 与 `/admin/*` 专用接口当前未在仓库中实现，前端实验与部分管理面板按原型做可用展示和现有接口聚合，未发明后端新 API。
+  - 工作区已有多处非本轮改动和未跟踪后端 P8 文件，本轮未触碰、不回滚。
+- 下一步建议:
+  - 若继续 P8，可补后端 `/experiments` 批量实验接口与 `/admin/users|roles|scenarios|interventions`，再把当前前端静态/聚合数据切到真实接口。
+
 ## 开发原则
 
 1. 严格按照 `docs/BUILD_ORDER.md` 推进。

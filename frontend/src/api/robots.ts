@@ -64,7 +64,13 @@ export interface RobotListParams {
 }
 
 export async function listRobots(params: RobotListParams = {}): Promise<Page<RobotRead>> {
-  const r: AxiosResponse<Page<RobotRead>> = await api.get('/robots', { params });
+  const { only_active, ...rest } = params;
+  const queryParams: Record<string, unknown> = { ...rest };
+  if (only_active !== undefined) {
+    // backend uses include_inactive (inverted semantics)
+    queryParams.include_inactive = !only_active;
+  }
+  const r: AxiosResponse<Page<RobotRead>> = await api.get('/robots', { params: queryParams });
   return r.data;
 }
 
@@ -82,4 +88,35 @@ export async function listRobotStates(robotId: string, limit = 1): Promise<Robot
 
 export async function recallRobot(robotId: string, reason: string): Promise<void> {
   await api.post(`/robots/${robotId}/recall`, { reason });
+}
+
+export interface RobotCreatePayload {
+  code: string;
+  name: string;
+  type: RobotType;
+  model?: string | null;
+  capability: RobotCapability;
+  group_id?: string | null;
+}
+
+export interface RobotUpdatePayload {
+  name?: string;
+  model?: string | null;
+  capability?: RobotCapability;
+  group_id?: string | null;
+  is_active?: boolean;
+}
+
+export async function createRobot(payload: RobotCreatePayload): Promise<RobotRead> {
+  const r: AxiosResponse<RobotRead> = await api.post('/robots', payload);
+  return r.data;
+}
+
+export async function updateRobot(id: string, payload: RobotUpdatePayload): Promise<RobotRead> {
+  const r: AxiosResponse<RobotRead> = await api.put(`/robots/${id}`, payload);
+  return r.data;
+}
+
+export async function deleteRobot(id: string): Promise<void> {
+  await api.delete(`/robots/${id}`);
 }
