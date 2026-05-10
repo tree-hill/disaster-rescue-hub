@@ -496,6 +496,14 @@ function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: ()
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    // 坐标范围校验（演练区外会导致所有机器人 R7 out_of_range 失败）
+    const outOfBounds =
+      centerLat < 30.15 || centerLat > 30.30 ||
+      centerLng < 120.45 || centerLng > 120.60;
+    if (outOfBounds) {
+      setError(`目标区域超出演练范围。请使用演练区坐标：纬度 30.20–30.25，经度 120.50–120.55（或点击"重置到演练区中心"）`);
+      return;
+    }
     setSubmitting(true);
     try {
       const r = radiusM;
@@ -568,24 +576,54 @@ function CreateForm({ onClose, onCreated }: { onClose: () => void; onCreated: ()
       </Field>
 
       <Field label="目标区域 (圆心 + 半径)" required>
-        <div className="grid grid-cols-2 gap-2 mb-2">
-          <input
-            type="number"
-            step="0.0001"
-            className="input-field"
-            placeholder="纬度"
-            value={centerLat}
-            onChange={(e) => setCenterLat(parseFloat(e.target.value) || 0)}
-          />
-          <input
-            type="number"
-            step="0.0001"
-            className="input-field"
-            placeholder="经度"
-            value={centerLng}
-            onChange={(e) => setCenterLng(parseFloat(e.target.value) || 0)}
-          />
-        </div>
+        {/* 演练区范围：lat 30.20–30.25, lng 120.50–120.55 */}
+        {(() => {
+          const outOfBounds =
+            centerLat < 30.15 || centerLat > 30.30 ||
+            centerLng < 120.45 || centerLng > 120.60;
+          return (
+            <>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                  演练区: 纬度 30.20–30.25, 经度 120.50–120.55
+                </span>
+                <button
+                  type="button"
+                  className="text-[10px] px-2 py-0.5 rounded"
+                  style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--warning)', border: '1px solid var(--warning)' }}
+                  onClick={() => { setCenterLat(30.225); setCenterLng(120.525); }}
+                >
+                  重置到演练区中心
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <input
+                  type="number"
+                  step="0.0001"
+                  className="input-field"
+                  placeholder="纬度 (~30.225)"
+                  value={centerLat}
+                  style={outOfBounds ? { borderColor: 'var(--danger)' } : undefined}
+                  onChange={(e) => setCenterLat(parseFloat(e.target.value) || 0)}
+                />
+                <input
+                  type="number"
+                  step="0.0001"
+                  className="input-field"
+                  placeholder="经度 (~120.525)"
+                  value={centerLng}
+                  style={outOfBounds ? { borderColor: 'var(--danger)' } : undefined}
+                  onChange={(e) => setCenterLng(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              {outOfBounds && (
+                <div className="text-[11px] mb-2 px-2 py-1 rounded" style={{ background: 'rgba(239,68,68,0.10)', color: 'var(--danger)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  坐标超出演练区范围，机器人将因距离超限 (R7) 无法参与拍卖，请填写杭州西湖区附近坐标
+                </div>
+              )}
+            </>
+          );
+        })()}
         <input
           type="number"
           step="50"
