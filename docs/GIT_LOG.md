@@ -24,10 +24,12 @@
 
 ## 提交记录
 
-### 2026-05-10 - 拍卖链路 Bug 修复（未提交，本次 commit）
+### 2026-05-10 - 拍卖链路 Bug 修复
 
 - 任务：auction_failed 根因修复 + 其他链路断点修复
 - 工具：Claude Code
+- Commit hash：81dbe81
+- 是否 push：✓
 - 主要修改：
   - `frontend/src/pages/TaskManagement.tsx` 拆分传感器/负载选择，fix 取消原因 ≥ 5 字符
   - `frontend/src/api/robots.ts` only_active → include_inactive 参数名修正
