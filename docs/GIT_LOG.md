@@ -24,6 +24,29 @@
 
 ## 提交记录
 
+### 2026-05-11 04:21 — 前端静态展示数据联动检查
+
+- 任务：检查并修正前端中应与现有 API / WS 数据联动但仍静态展示的区域
+- 工具：Codex
+- 分支：main
+- Commit message：fix(frontend): replace static displays with live data
+- Commit hash：8984b4f
+- 是否 push：待随文档提交一并 push
+- 远程分支：origin/main
+- 主要修改：
+  - `frontend/src/pages/AlertCenter.tsx`：关联任务/机器人补详情，平均响应与触发类型由当前数据计算。
+  - `frontend/src/pages/Blackboard.tsx`：视觉实时画面移除静态 bbox，改接 WS 检测事件生成检测框。
+  - `frontend/src/pages/Admin.tsx`、`frontend/src/api/scenarios.ts`：场景与调度算法接真实接口。
+  - `frontend/src/pages/RobotManagement.tsx`：当前页机器人全量补最新状态，统计改用汇总数据。
+  - `frontend/src/pages/Replay.tsx`：取消 mock 会话兜底伪装，空数据明确显示，机器人位置按坐标投影。
+- 自检：
+  - `cd frontend; npm.cmd run build` → passed
+  - `cd frontend; npm.cmd run lint` → blocked：仓库缺 ESLint 配置
+- 回滚命令：
+  ```bash
+  git revert 8984b4f
+  ```
+
 ### 2026-05-11 03:30 — P7.3 指挥台地图模块补齐
 
 - 任务：P7.3 指挥台页面地图模块，补齐 BUILD_ORDER 中“地图组件用 React-Konva”的规划项

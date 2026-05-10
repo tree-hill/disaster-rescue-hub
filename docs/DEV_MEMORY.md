@@ -6,6 +6,46 @@
 
 ---
 
+#### 2026-05-11 04:21 — Codex — 前端静态展示数据联动检查
+
+- 任务：进一步检查前端仍然存在的静态展示，优先把已有 API / WS 可支撑的展示改为真实数据驱动
+- 执行工具：Codex
+- 修改类型：fix/frontend/docs
+- 涉及文件：
+  - `frontend/src/api/scenarios.ts`
+  - `frontend/src/pages/Admin.tsx`
+  - `frontend/src/pages/AlertCenter.tsx`
+  - `frontend/src/pages/Blackboard.tsx`
+  - `frontend/src/pages/Replay.tsx`
+  - `frontend/src/pages/RobotManagement.tsx`
+  - `docs/DEV_MEMORY.md`
+  - `docs/TASK_BOARD.md`
+  - `docs/GIT_LOG.md`
+- 主要变更：
+  - 告警中心统计改为当前筛选/本页数据计算；详情面板通过 `getTask` / `getRobot` 补全关联任务与机器人名称。
+  - 黑板“视觉感知实时画面”移除静态 bbox，改由 `perception.detection` / `blackboard.updated` 时间线驱动。
+  - 管理后台场景剧本改读 `/scenarios`，系统配置中的调度算法改读 `/dispatch/algorithm`。
+  - 机器人管理列表当前页全量补最新状态，统计改由同筛选条件的机器人汇总和详情状态计算。
+  - 复盘历史页不再在 API 空/失败时塞入 mock 会话；无快照时显示空状态，机器人有坐标时按位置投影。
+- 验证命令：
+  - `cd frontend; npm.cmd run build`
+  - `cd frontend; npm.cmd run lint`
+- 验证结果：
+  - build 通过；仅保留 Vite CJS API、package type 与 chunk size 既有警告。
+  - lint 未执行到代码检查：仓库缺 ESLint 配置，ESLint 报 `couldn't find a configuration file`。
+- Git 提交：
+  - commit message：fix(frontend): replace static displays with live data
+  - commit hash：8984b4f
+  - push 状态：待随文档提交一并 push 到 origin/main
+- 遗留问题：
+  - 用户/角色面板仍按后端 RBAC 与种子用户只读展示，当前无 `/users` CRUD 或运行时角色管理接口。
+  - 登录页左侧演示指标处于未登录上下文，不接受权接口，保留为登录品牌展示。
+  - 当前沙箱中 Vite 前台可启动到 `http://127.0.0.1:5173/`，但后台进程无法持久保留。
+- 下一步建议：
+  - 后续如补 `/users`、角色管理或场景详情字段，再把 Admin 用户/角色/场景详情继续从只读说明升级为接口驱动。
+
+---
+
 #### 2026-05-11 03:30 — Codex — P7.3 指挥台地图模块补齐
 
 - 任务：完成指挥台页面地图模块，将 P7.3 规划中的 React-Konva 态势地图从静态 SVG 占位补齐为实时交互组件
