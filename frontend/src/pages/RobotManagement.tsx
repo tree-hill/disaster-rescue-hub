@@ -6,8 +6,7 @@
  * - GET /robots/{id}（详情 + 嵌入最新 RobotStateRead）
  * - POST /robots/{id}/recall {reason}
  *
- * 占位：
- * - 移动到编队 / 删除 / 编辑 → 暂未接 PUT/DELETE，按钮 alert() 提示「P8 实装」
+ * 列表行通过 GET /robots/{id} 补最新 RobotStateRead，避免把未加载状态误显示为 IDLE。
  */
 import {
   AlertTriangle,
@@ -70,6 +69,13 @@ interface Row extends RobotRead {
   battery?: number;
 }
 
+interface RobotStats {
+  uav: number;
+  ugv: number;
+  usv: number;
+  fault: number;
+}
+
 export function RobotManagement() {
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
@@ -80,21 +86,31 @@ export function RobotManagement() {
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<RobotDetailRead | null>(null);
+  const [stats, setStats] = useState<RobotStats>({ uav: 0, ugv: 0, usv: 0, fault: 0 });
 
   const refresh = useMemo(
     () => async () => {
       setLoading(true);
       try {
-        const p = await listRobots({
+        const baseParams = {
           type: type || undefined,
           search: search || undefined,
-          page,
-          page_size: pageSize,
-        });
-        // 拉每行最新状态做混入（限 5 条避免 N+1 拥堵）
+        };
+        const [p, summaryPage] = await Promise.all([
+          listRobots({
+            ...baseParams,
+            page,
+            page_size: pageSize,
+          }),
+          listRobots({
+            ...baseParams,
+            page: 1,
+            page_size: 100,
+          }),
+        ]);
+        // 当前页每一行都补最新状态，未上报时才显示 "—"。
         const items = await Promise.all(
-          p.items.map(async (r, idx): Promise<Row> => {
-            if (idx >= 5) return r;
+          p.items.map(async (r): Promise<Row> => {
             try {
               const d = await getRobot(r.id);
               return { ...r, fsm: d.latest_state?.fsm_state, battery: d.latest_state?.battery };
@@ -103,6 +119,15 @@ export function RobotManagement() {
             }
           }),
         );
+        const summaryDetails = await Promise.all(
+          summaryPage.items.map((r) => getRobot(r.id).catch(() => null)),
+        );
+        setStats({
+          uav: summaryPage.items.filter((r) => r.type === 'uav').length,
+          ugv: summaryPage.items.filter((r) => r.type === 'ugv').length,
+          usv: summaryPage.items.filter((r) => r.type === 'usv').length,
+          fault: summaryDetails.filter((d) => d?.latest_state?.fsm_state === 'FAULT').length,
+        });
         setRows(items);
         setTotal(p.total);
         if (items.length > 0 && !items.find((x) => x.id === selectedId)) {
@@ -126,15 +151,6 @@ export function RobotManagement() {
     }
     getRobot(selectedId).then(setDetail).catch(() => setDetail(null));
   }, [selectedId]);
-
-  const stats = useMemo(() => {
-    const total = rows.length;
-    const uav = rows.filter((r) => r.type === 'uav').length;
-    const ugv = rows.filter((r) => r.type === 'ugv').length;
-    const usv = rows.filter((r) => r.type === 'usv').length;
-    const fault = rows.filter((r) => r.fsm === 'FAULT').length;
-    return { total, uav, ugv, usv, fault };
-  }, [rows]);
 
   const handleRecall = async (id: string) => {
     const reason = window.prompt('召回原因（必填，至少 5 字）');

@@ -23,6 +23,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { listAlerts, type AlertRead } from '@/api/alerts';
+import { getAlgorithm, type AlgorithmInfo } from '@/api/dispatch';
 import { listReplaySessions, type ReplaySessionRead } from '@/api/replay';
 import {
   createRobot,
@@ -34,6 +35,7 @@ import {
   type RobotRead,
   type RobotType,
 } from '@/api/robots';
+import { listScenarios, type ScenarioRead } from '@/api/scenarios';
 import { listTasks, type TaskRead } from '@/api/tasks';
 import { AppShell } from '@/components/common/AppShell';
 
@@ -64,18 +66,13 @@ const ROLES = [
   { name: 'observer', desc: '观察员，只读查看态势、黑板、告警和复盘', perms: ['task:read', 'robot:read', 'blackboard:read', 'alert:read', 'replay:read'] },
 ];
 
-const SCENARIOS = [
-  { name: '6级地震废墟搜救', type: 'earthquake', robots: 25, tasks: 30, status: '当前默认' },
-  { name: '森林火灾监测', type: 'fire', robots: 18, tasks: 20, status: '备用' },
-];
-
 export function Admin() {
   const [menu, setMenu] = useState<MenuKey>('robots');
   const [robotTotal, setRobotTotal] = useState(0);
   const [alertTotal, setAlertTotal] = useState(0);
 
   useEffect(() => {
-    listRobots({ page: 1, page_size: 1, only_active: false }).then((p) => setRobotTotal(p.total)).catch(() => setRobotTotal(25));
+    listRobots({ page: 1, page_size: 1, only_active: false }).then((p) => setRobotTotal(p.total)).catch(() => setRobotTotal(0));
     listAlerts({ page: 1, page_size: 1 }).then((p) => setAlertTotal(p.total)).catch(() => setAlertTotal(0));
   }, []);
 
@@ -87,7 +84,7 @@ export function Admin() {
           <nav className="space-y-1">
             {MENU_ITEMS.map((it) => {
               const active = it.k === menu;
-              const tag = it.k === 'robots' ? String(robotTotal || 25) : it.k === 'audit' ? String(alertTotal) : it.tag;
+              const tag = it.k === 'robots' ? String(robotTotal) : it.k === 'audit' ? String(alertTotal) : it.tag;
               return (
                 <button
                   key={it.k}
@@ -601,6 +598,25 @@ function AuditPanel() {
 }
 
 function ScenariosPanel() {
+  const [scenarios, setScenarios] = useState<ScenarioRead[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    listScenarios()
+      .then((items) => {
+        if (!cancelled) setScenarios(items);
+      })
+      .catch(() => {
+        if (!cancelled) setScenarios([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   return (
     <>
       <PageTitle title="场景剧本" trail="管理后台 / 场景剧本">
@@ -608,27 +624,35 @@ function ScenariosPanel() {
           <Plus className="w-4 h-4" /> 新建剧本
         </button>
       </PageTitle>
-      <ReadOnlyNotice text="场景由 backend/scripts seed 写入，运行时切换通过演练会话 (replay sessions) 体现。CRUD 接口在 P8 实装。" />
+      <ReadOnlyNotice text="场景列表读取 /scenarios 活跃场景；创建和编辑仍由后端 seed / 迁移脚本维护，CRUD 接口尚未开放。" />
       <div className="grid grid-cols-2 gap-3">
-        {SCENARIOS.map((s) => (
-          <div className="panel p-4" key={s.name}>
+        {loading && (
+          <div className="panel p-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            加载场景…
+          </div>
+        )}
+        {!loading && scenarios.length === 0 && (
+          <div className="panel p-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            暂无可用场景
+          </div>
+        )}
+        {scenarios.map((s) => (
+          <div className="panel p-4" key={s.id}>
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="text-lg font-semibold">{s.name}</div>
-                <div className="text-xs mono mt-1" style={{ color: 'var(--text-tertiary)' }}>{s.type}</div>
+                <div className="text-xs mono mt-1" style={{ color: 'var(--text-tertiary)' }}>{s.disaster_type}</div>
               </div>
-              <span className={s.status === '当前默认' ? 'badge badge-success' : 'badge'} style={s.status === '当前默认' ? undefined : { background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>{s.status}</span>
+              <span className={s.is_active ? 'badge badge-success' : 'badge'} style={s.is_active ? undefined : { background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+                {s.is_active ? '启用' : '停用'}
+              </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <MiniMetric label="机器人编队" value={`${s.robots} 台`} />
-              <MiniMetric label="任务规模" value={`${s.tasks} 个`} />
+              <MiniMetric label="场景 ID" value={s.id.slice(0, 8)} />
+              <MiniMetric label="灾害类型" value={s.disaster_type} />
             </div>
-            <div className="mt-4 h-40 rounded relative overflow-hidden" style={{ background: 'radial-gradient(circle at 45% 50%, #252B3D 0%, #111827 70%)', border: '1px solid var(--border-subtle)' }}>
-              <svg viewBox="0 0 420 160" className="w-full h-full">
-                <path d="M30 120 C80 70 130 84 180 48 C230 18 292 42 374 96" fill="none" stroke="#3B82F6" strokeWidth="2" strokeDasharray="7 6" />
-                <circle cx="270" cy="70" r="38" fill="rgba(239,68,68,0.14)" stroke="#EF4444" strokeDasharray="5 4" />
-                <circle cx="130" cy="96" r="26" fill="rgba(245,158,11,0.16)" stroke="#F59E0B" strokeDasharray="5 4" />
-              </svg>
+            <div className="mt-4 rounded p-3 text-xs" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
+              地图边界与初始态由演练会话和指挥台地图模块加载。
             </div>
           </div>
         ))}
@@ -638,8 +662,14 @@ function ScenariosPanel() {
 }
 
 function ConfigPanel() {
+  const [algorithm, setAlgorithm] = useState<AlgorithmInfo | null>(null);
+
+  useEffect(() => {
+    getAlgorithm().then(setAlgorithm).catch(() => setAlgorithm(null));
+  }, []);
+
   const configs = [
-    ['调度算法', 'AUCTION_HUNGARIAN', '通过指挥工作台「切换算法」按钮 HITL 修改（POST /dispatch/algorithm）'],
+    ['调度算法', algorithm?.current ?? '加载中', `可选：${algorithm?.available.join(' / ') ?? '读取中'}；通过工作台 HITL 修改`],
     ['状态推送频率', '1 Hz', '后端 .env STATE_PUSH_INTERVAL 静态配置'],
     ['告警扫描间隔', '60 sec', 'SLA 扫描定时任务，运行时不可改'],
     ['复盘采样频率', '1 Hz', 'Replay SnapshotRecorder 内置'],

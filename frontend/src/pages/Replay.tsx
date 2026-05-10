@@ -49,14 +49,6 @@ const ALGO_COLORS: Record<Algorithm, string> = {
   RANDOM: '#9BA3B8',
 };
 
-const MOCK_SESSIONS: ReplaySessionRead[] = [
-  mockSession('mock-003', '演练#003', 'AUCTION_HUNGARIAN', 87, 1725, 6, 5),
-  mockSession('mock-002', '演练#002', 'GREEDY', 72, 1330, 5, 8),
-  mockSession('mock-001', '演练#001', 'RANDOM', 55, 1800, 4, 12),
-  mockSession('mock-004', '实拍-002', 'AUCTION_HUNGARIAN', 91, 2120, 7, 4),
-];
-
-
 export function Replay() {
   const [tab, setTab] = useState<ReplayTab>('history');
 
@@ -97,14 +89,14 @@ function HistoryReplay() {
           algorithm: algorithmFilter || undefined,
           scenario_id: scenarioFilter || undefined,
         });
-        const data = page.items.length ? page.items : MOCK_SESSIONS;
+        const data = page.items;
         if (!alive) return;
         setSessions(data);
         setSelectedId((cur) => (cur && data.some((s) => s.id === cur) ? cur : data[0]?.id ?? null));
       } catch {
         if (!alive) return;
-        setSessions(MOCK_SESSIONS);
-        setSelectedId(MOCK_SESSIONS[0].id);
+        setSessions([]);
+        setSelectedId(null);
       } finally {
         if (alive) setLoading(false);
       }
@@ -133,13 +125,12 @@ function HistoryReplay() {
   useEffect(() => {
     let alive = true;
     async function loadDetail() {
-      if (!selectedId) return;
-      const selected = sessions.find((s) => s.id === selectedId);
-      if (selectedId.startsWith('mock-')) {
-        setSnapshots(selected?.summary.snapshots ?? []);
-        setEvents(selected?.summary.key_events ?? []);
+      if (!selectedId) {
+        setSnapshots([]);
+        setEvents([]);
         return;
       }
+      const selected = sessions.find((s) => s.id === selectedId);
       try {
         const [detail, ss, es] = await Promise.all([
           getReplaySession(selectedId),
@@ -162,10 +153,11 @@ function HistoryReplay() {
     };
   }, [selectedId, sessions]);
 
-  const selected = sessions.find((s) => s.id === selectedId) ?? sessions[0] ?? MOCK_SESSIONS[0];
-  const frame = snapshots[Math.min(snapshots.length - 1, Math.floor((progress / 100) * snapshots.length))] ?? snapshots[0];
-  const robots = frame?.robots ?? selected.summary.snapshots[0]?.robots ?? [];
-  const tasks = frame?.tasks ?? selected.summary.snapshots[0]?.tasks ?? [];
+  const selected = sessions.find((s) => s.id === selectedId) ?? sessions[0] ?? null;
+  const frameIndex = snapshots.length > 0 ? Math.min(snapshots.length - 1, Math.floor((progress / 100) * snapshots.length)) : -1;
+  const frame = frameIndex >= 0 ? snapshots[frameIndex] : undefined;
+  const robots = frame?.robots ?? selected?.summary.snapshots[0]?.robots ?? [];
+  const tasks = frame?.tasks ?? selected?.summary.snapshots[0]?.tasks ?? [];
 
   const eventMarkers = events.map((e, i) => ({
     ...e,
@@ -215,22 +207,22 @@ function HistoryReplay() {
               onClick={() => setSelectedId(s.id)}
               className="w-full text-left p-3 rounded-lg transition"
               style={{
-                background: s.id === selected.id ? 'rgba(245,158,11,0.08)' : 'var(--bg-tertiary)',
-                border: `1px solid ${s.id === selected.id ? 'var(--warning)' : 'var(--border-subtle)'}`,
-                boxShadow: s.id === selected.id ? '0 0 0 1px var(--warning)' : 'none',
+                background: s.id === selected?.id ? 'rgba(245,158,11,0.08)' : 'var(--bg-tertiary)',
+                border: `1px solid ${s.id === selected?.id ? 'var(--warning)' : 'var(--border-subtle)'}`,
+                boxShadow: s.id === selected?.id ? '0 0 0 1px var(--warning)' : 'none',
               }}
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
-                  {s.id === selected.id && <Bookmark className="w-3.5 h-3.5" style={{ color: 'var(--warning)' }} />}
+                  {s.id === selected?.id && <Bookmark className="w-3.5 h-3.5" style={{ color: 'var(--warning)' }} />}
                   <span className="text-sm font-semibold mono">{s.name}</span>
                 </div>
-                <span className={s.id === selected.id ? 'badge badge-warning' : 'badge'} style={s.id === selected.id ? undefined : { background: 'var(--bg-secondary)', color: 'var(--text-tertiary)' }}>
-                  {s.id === selected.id ? '已选中' : '已结束'}
+                <span className={s.id === selected?.id ? 'badge badge-warning' : 'badge'} style={s.id === selected?.id ? undefined : { background: 'var(--bg-secondary)', color: 'var(--text-tertiary)' }}>
+                  {s.id === selected?.id ? '已选中' : '已结束'}
                 </span>
               </div>
               <div className="text-xs space-y-1" style={{ color: 'var(--text-secondary)' }}>
-                <div>场景 {s.scenario_id ? s.scenario_id.slice(0, 8) : '6级地震演练'}</div>
+                <div>场景 {s.scenario_id ? s.scenario_id.slice(0, 8) : '未绑定'}</div>
                 <div className="flex items-center justify-between">
                   <span>算法 <span className="mono">{shortAlgo(s.algorithm)}</span></span>
                   <span className="mono">{formatDuration(s.duration_sec)}</span>
@@ -244,6 +236,11 @@ function HistoryReplay() {
               </div>
             </button>
           ))}
+          {!loading && sessions.length === 0 && (
+            <div className="text-center text-xs py-8" style={{ color: 'var(--text-tertiary)' }}>
+              暂无复盘会话
+            </div>
+          )}
         </div>
 
         <div className="px-3 py-3 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
@@ -262,25 +259,29 @@ function HistoryReplay() {
           <div className="flex items-center gap-4 min-w-0">
             <div className="flex items-center gap-2">
               <PlayCircle className="w-5 h-5" style={{ color: 'var(--accent-primary)' }} />
-              <span className="text-base font-semibold truncate">{selected.name} · 6级地震演练</span>
+              <span className="text-base font-semibold truncate">
+                {selected ? `${selected.name} · ${selected.scenario_id ? selected.scenario_id.slice(0, 8) : '未绑定场景'}` : '暂无复盘会话'}
+              </span>
             </div>
             <div className="text-xs flex items-center gap-3 mono" style={{ color: 'var(--text-tertiary)' }}>
-              <span>开始 {formatDateTime(selected.started_at)}</span>
-              <span>时长 {formatDuration(selected.duration_sec)}</span>
-              <span>算法 {selected.algorithm}</span>
+              <span>开始 {selected ? formatDateTime(selected.started_at) : '—'}</span>
+              <span>时长 {formatDuration(selected?.duration_sec)}</span>
+              <span>算法 {selected?.algorithm ?? '—'}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               className="btn-ghost flex items-center gap-1"
               onClick={() => exportSessionJson(selected)}
+              disabled={!selected}
               title="导出会话 summary（含 snapshots / key_events / yolo 统计）"
             >
               <FileText className="w-3.5 h-3.5" /> 导出
             </button>
             <button
               className="btn-ghost flex items-center gap-1"
-              onClick={() => copySessionLink(selected.id)}
+              onClick={() => selected && copySessionLink(selected.id)}
+              disabled={!selected}
               title="复制会话 ID 到剪贴板"
             >
               <Share2 className="w-3.5 h-3.5" /> 复制 ID
@@ -303,7 +304,7 @@ function HistoryReplay() {
                 <RotateCcw className="w-3.5 h-3.5" /> 重置视角
               </button>
               <div className="text-xs mono ml-auto" style={{ color: 'var(--text-secondary)' }}>
-                {formatDuration(Math.round(((selected.duration_sec ?? 0) * progress) / 100))} / {formatDuration(selected.duration_sec)}
+                {formatDuration(Math.round(((selected?.duration_sec ?? 0) * progress) / 100))} / {formatDuration(selected?.duration_sec)}
               </div>
             </div>
 
@@ -333,10 +334,10 @@ function HistoryReplay() {
         </div>
 
         <div className="grid grid-cols-4 gap-3">
-          <SummaryCard label="任务总数" value={selected.summary.total_tasks} tone="var(--accent-primary)" />
-          <SummaryCard label="完成任务" value={selected.summary.completed_tasks} tone="var(--success)" />
-          <SummaryCard label="人工干预" value={selected.summary.total_interventions} tone="var(--warning)" />
-          <SummaryCard label="告警总数" value={selected.summary.total_alerts} tone="var(--danger)" />
+          <SummaryCard label="任务总数" value={selected?.summary.total_tasks ?? 0} tone="var(--accent-primary)" />
+          <SummaryCard label="完成任务" value={selected?.summary.completed_tasks ?? 0} tone="var(--success)" />
+          <SummaryCard label="人工干预" value={selected?.summary.total_interventions ?? 0} tone="var(--warning)" />
+          <SummaryCard label="告警总数" value={selected?.summary.total_alerts ?? 0} tone="var(--danger)" />
         </div>
       </section>
 
@@ -362,8 +363,9 @@ function HistoryReplay() {
 }
 
 function ReplayCanvas({ robots, tasks, progress }: { robots: RobotFrame[]; tasks: TaskFrame[]; progress: number }) {
-  const dots = robots.length ? robots : mockRobots(progress);
-  const taskDots = tasks.length ? tasks : mockTasks(progress);
+  const dots = robots;
+  const taskDots = tasks;
+  const hasFrameData = dots.length > 0 || taskDots.length > 0;
 
   return (
     <div className="flex-1 relative overflow-hidden" style={{ background: 'radial-gradient(circle at 50% 50%, #1a2030 0%, #0F1419 100%)' }}>
@@ -388,8 +390,7 @@ function ReplayCanvas({ robots, tasks, progress }: { robots: RobotFrame[]; tasks
         ))}
 
         {dots.map((r, i) => {
-          const x = 95 + ((i * 127 + progress * 2) % 610);
-          const y = 105 + ((i * 83 + progress * 1.3) % 390);
+          const { x, y } = projectReplayPosition(r.position, i, progress);
           const color = r.code.startsWith('MAR') ? '#22D3EE' : r.code.startsWith('GND') ? '#A78BFA' : '#60A5FA';
           return (
             <g key={r.robot_id}>
@@ -408,8 +409,35 @@ function ReplayCanvas({ robots, tasks, progress }: { robots: RobotFrame[]; tasks
           <circle cx="126" cy="32" r="5" fill="#22D3EE" /><text x="138" y="36" fill="#9BA3B8" fontSize="10">USV</text>
         </g>
       </svg>
+      {!hasFrameData && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
+          暂无快照数据
+        </div>
+      )}
     </div>
   );
+}
+
+const REPLAY_BOUNDS = {
+  minLat: 30.18,
+  maxLat: 30.32,
+  minLng: 120.44,
+  maxLng: 120.66,
+};
+
+function projectReplayPosition(position: RobotFrame['position'], index: number, progress: number): { x: number; y: number } {
+  if (!position) {
+    return {
+      x: 95 + ((index * 127 + progress * 2) % 610),
+      y: 105 + ((index * 83 + progress * 1.3) % 390),
+    };
+  }
+  const xRatio = (position.lng - REPLAY_BOUNDS.minLng) / (REPLAY_BOUNDS.maxLng - REPLAY_BOUNDS.minLng);
+  const yRatio = 1 - (position.lat - REPLAY_BOUNDS.minLat) / (REPLAY_BOUNDS.maxLat - REPLAY_BOUNDS.minLat);
+  return {
+    x: Math.min(760, Math.max(40, 40 + xRatio * 720)),
+    y: Math.min(560, Math.max(40, 40 + yRatio * 520)),
+  };
 }
 
 // 论文参考数据（低负载场景下从 60-run 实验测得的真实值）
@@ -791,68 +819,6 @@ async function copySessionLink(id: string) {
   } catch {
     alert(`复制失败，请手动复制：${id}`);
   }
-}
-
-function mockSession(id: string, name: string, algorithm: Algorithm, completion: number, duration: number, completed: number, alerts: number): ReplaySessionRead {
-  const snapshots = makeSnapshots(completed + 3);
-  return {
-    id,
-    name,
-    scenario_id: null,
-    algorithm,
-    started_at: '2026-05-10T09:30:00+08:00',
-    ended_at: '2026-05-10T10:00:00+08:00',
-    duration_sec: duration,
-    completion_rate: completion,
-    created_by: 'system',
-    created_at: '2026-05-10T10:00:00+08:00',
-    summary: {
-      total_tasks: completed + 2,
-      completed_tasks: completed,
-      failed_tasks: 1,
-      total_robots_used: 18,
-      total_interventions: algorithm === 'RANDOM' ? 5 : 2,
-      total_alerts: alerts,
-      yolo_detections_summary: { survivor: 8, fire: 2, smoke: 3, collapsed_building: 4 },
-      snapshots,
-      key_events: [
-        { ts: '2026-05-10T09:32:00+08:00', type: 'auction_completed', description: '首轮拍卖完成，生成 5 个任务分配', related_id: null },
-        { ts: '2026-05-10T09:39:00+08:00', type: 'alert', description: 'UAV-007 电量低于阈值，系统触发告警', related_id: null },
-        { ts: '2026-05-10T09:46:00+08:00', type: 'intervention', description: '指挥员执行一次任务改派', related_id: null },
-        { ts: '2026-05-10T09:58:00+08:00', type: 'task_completed', description: '核心搜救任务完成并写入复盘汇总', related_id: null },
-      ],
-    },
-  };
-}
-
-function makeSnapshots(taskCount: number): Snapshot[] {
-  return Array.from({ length: 12 }).map((_, i) => ({
-    ts: `2026-05-10T09:${String(30 + i).padStart(2, '0')}:00+08:00`,
-    robots: mockRobots(i * 8),
-    tasks: mockTasks(i * 8, taskCount),
-    blackboard: { total_entries: 20 + i, by_type: { survivor: 5, fire: 2 } },
-  }));
-}
-
-function mockRobots(progress: number): RobotFrame[] {
-  return ['UAV-001', 'UAV-003', 'GND-001', 'GND-004', 'MAR-002', 'UAV-007'].map((code, i) => ({
-    robot_id: `mock-robot-${i}`,
-    code,
-    fsm_state: i === 5 ? 'FAULT' : 'EXECUTING',
-    battery: Math.max(8, 96 - i * 7 - progress * 0.2),
-    current_task_id: `mock-task-${i % 3}`,
-    position: null,
-  }));
-}
-
-function mockTasks(progress: number, count = 5): TaskFrame[] {
-  return Array.from({ length: Math.min(count, 5) }).map((_, i) => ({
-    task_id: `mock-task-${i}`,
-    code: `T-${String(i + 18).padStart(3, '0')}`,
-    status: progress > 72 ? 'COMPLETED' : 'EXECUTING',
-    progress: Math.min(100, progress + i * 8),
-    assigned_robot_ids: [`mock-robot-${i}`],
-  }));
 }
 
 function shortAlgo(algorithm: string) {

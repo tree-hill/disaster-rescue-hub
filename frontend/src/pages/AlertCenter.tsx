@@ -8,11 +8,9 @@
  * - POST /alerts/{id}/ignore
  * - WS commander 房间订阅 'alert.raised' / 'alert.acknowledged' / 'alert.ignored' 实时刷新
  *
- * 占位（后端缺）：
+ * 数据缺口（后端 payload 未强约束）：
  * - 详情面板「火点面积 / 扩散方向 / 距最近水源 / 关联任务 / 附近机器人」
- *   → 这些字段在 alerts.payload JSONB 内可能存，但 P7.1 后端没有强约束，先按 payload 字段
- *     渲染，缺则显示 "—"。
- * - 「派遣灭火任务 / 通知应急队 / 查看实时画面」三个按钮 → onClick 占位 alert()。
+ *   → 火点字段在 alerts.payload JSONB 内可能存；关联任务/机器人通过现有详情接口补全展示。
  */
 import {
   AlertTriangle,
@@ -32,6 +30,8 @@ import {
   type AlertRead,
   type AlertSeverity,
 } from '@/api/alerts';
+import { getRobot, type RobotDetailRead } from '@/api/robots';
+import { getTask, type TaskRead } from '@/api/tasks';
 import { AppShell } from '@/components/common/AppShell';
 import { useWSStore } from '@/store/ws';
 
@@ -82,6 +82,8 @@ export function AlertCenter() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [relatedTasks, setRelatedTasks] = useState<Record<string, TaskRead>>({});
+  const [relatedRobots, setRelatedRobots] = useState<Record<string, RobotDetailRead>>({});
 
   const wsConnect = useWSStore((s) => s.connect);
   const wsSubscribe = useWSStore((s) => s.subscribe);
@@ -129,12 +131,47 @@ export function AlertCenter() {
 
   const selected = items.find((a) => a.id === selectedId) ?? null;
 
+  useEffect(() => {
+    const taskIds = Array.from(new Set(items.map((a) => a.related_task_id).filter(Boolean))) as string[];
+    const robotIds = Array.from(new Set(items.map((a) => a.related_robot_id).filter(Boolean))) as string[];
+    const missingTaskIds = taskIds.filter((id) => !relatedTasks[id]);
+    const missingRobotIds = robotIds.filter((id) => !relatedRobots[id]);
+    if (missingTaskIds.length === 0 && missingRobotIds.length === 0) return;
+
+    let cancelled = false;
+    Promise.all([
+      ...missingTaskIds.map((id) => getTask(id).then((task) => ({ id, task })).catch(() => null)),
+      ...missingRobotIds.map((id) => getRobot(id).then((robot) => ({ id, robot })).catch(() => null)),
+    ]).then((records) => {
+      if (cancelled) return;
+      const nextTasks: Record<string, TaskRead> = {};
+      const nextRobots: Record<string, RobotDetailRead> = {};
+      records.forEach((record) => {
+        if (!record) return;
+        if ('task' in record) nextTasks[record.id] = record.task;
+        if ('robot' in record) nextRobots[record.id] = record.robot;
+      });
+      if (Object.keys(nextTasks).length > 0) setRelatedTasks((prev) => ({ ...prev, ...nextTasks }));
+      if (Object.keys(nextRobots).length > 0) setRelatedRobots((prev) => ({ ...prev, ...nextRobots }));
+    });
+
+    return () => { cancelled = true; };
+  }, [items, relatedTasks, relatedRobots]);
+
   // 顶部统计（基于当前页，缺独立 endpoint 时 best-effort）
   const stat = useMemo(() => {
     const unack = items.filter((a) => !a.is_ignored && !a.acknowledged_at).length;
     const acked = items.filter((a) => a.acknowledged_at).length;
     const ignored = items.filter((a) => a.is_ignored).length;
-    return { unack, acked, ignored };
+    const responseMinutes = items
+      .filter((a) => a.acknowledged_at)
+      .map((a) => (Date.parse(a.acknowledged_at as string) - Date.parse(a.raised_at)) / 60000)
+      .filter((v) => Number.isFinite(v) && v >= 0);
+    const avgResponse = responseMinutes.length > 0
+      ? responseMinutes.reduce((sum, v) => sum + v, 0) / responseMinutes.length
+      : null;
+    const typeCount = new Set(items.map((a) => a.type)).size;
+    return { unack, acked, ignored, avgResponse, typeCount };
   }, [items]);
 
   const handleAck = async (id: string) => {
@@ -203,8 +240,12 @@ export function AlertCenter() {
           <StatCard label="已确认" value={stat.acked} valueColor="var(--success)" />
           <StatCard label="已忽略" value={stat.ignored} valueColor="var(--text-tertiary)" />
           <StatCard label="本页总数" value={items.length} sub={`共 ${total} 条`} />
-          <StatCard label="平均响应" value={'—'} sub="待埋点" />
-          <StatCard label="规则数" value={12} sub="11 已启用" />
+          <StatCard
+            label="平均响应"
+            value={stat.avgResponse == null ? '—' : `${stat.avgResponse >= 10 ? stat.avgResponse.toFixed(0) : stat.avgResponse.toFixed(1)} min`}
+            sub="本页已确认"
+          />
+          <StatCard label="触发类型" value={stat.typeCount} sub="基于当前筛选" />
         </div>
 
         {/* 工具栏 */}
@@ -454,6 +495,8 @@ export function AlertCenter() {
           {/* 详情面板 */}
           <DetailPanel
             alert={selected}
+            relatedTask={selected?.related_task_id ? relatedTasks[selected.related_task_id] ?? null : null}
+            relatedRobot={selected?.related_robot_id ? relatedRobots[selected.related_robot_id] ?? null : null}
             onAck={handleAck}
             onIgnore={handleIgnore}
             onCreateRescueTask={() => navigate('/tasks')}
@@ -496,12 +539,14 @@ function StatCard({ label, value, sub, valueColor, highlight }: StatCardProps) {
 
 interface DetailPanelProps {
   alert: AlertRead | null;
+  relatedTask: TaskRead | null;
+  relatedRobot: RobotDetailRead | null;
   onAck: (id: string) => void;
   onIgnore: (id: string) => void;
   onCreateRescueTask: () => void;
 }
 
-function DetailPanel({ alert, onAck, onIgnore, onCreateRescueTask }: DetailPanelProps) {
+function DetailPanel({ alert, relatedTask, relatedRobot, onAck, onIgnore, onCreateRescueTask }: DetailPanelProps) {
   if (!alert) {
     return (
       <div className="panel p-5 text-sm text-center" style={{ color: 'var(--text-tertiary)' }}>
@@ -600,12 +645,21 @@ function DetailPanel({ alert, onAck, onIgnore, onCreateRescueTask }: DetailPanel
 
       <Section title="关联实体">
         {alert.related_task_id ? (
-          <Row label="关联任务" value={alert.related_task_id.slice(0, 8)} mono valueColor="var(--accent-primary)" />
+          <Row
+            label="关联任务"
+            value={relatedTask ? `${relatedTask.code} · ${relatedTask.name}` : alert.related_task_id.slice(0, 8)}
+            mono
+            valueColor="var(--accent-primary)"
+          />
         ) : (
           <Row label="关联任务" value="—" />
         )}
         {alert.related_robot_id ? (
-          <Row label="关联机器人" value={alert.related_robot_id.slice(0, 8)} mono />
+          <Row
+            label="关联机器人"
+            value={relatedRobot ? `${relatedRobot.code} · ${relatedRobot.name}` : alert.related_robot_id.slice(0, 8)}
+            mono
+          />
         ) : (
           <Row label="关联机器人" value="—" />
         )}

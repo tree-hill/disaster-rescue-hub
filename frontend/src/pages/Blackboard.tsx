@@ -6,9 +6,9 @@
  * - GET /blackboard/entries（type/key_prefix/min_confidence/page）
  * - WS commander 房间订阅 'blackboard.updated' 实时刷新
  *
- * 占位：
- * - 视觉感知实时画面（左上 video grid + bbox 框）→ 没有真实视频流，用占位渐变 + 静态 bbox 演示效果（与原型一致）
- * - 模型信息（YOLOv8s / mAP / 推理速度）→ 静态展示（来自 BUSINESS_RULES）
+ * 数据说明：
+ * - 视觉感知实时画面由 WS perception.detection / blackboard.updated 驱动；无推送时显示等待状态。
+ * - 模型信息（YOLOv8s / mAP / 推理速度）为 BUSINESS_RULES 中的实验配置说明。
  */
 import {
   Activity,
@@ -40,7 +40,21 @@ interface DetectionEvent {
   confidence: number;
   fused: boolean;
   dropped: boolean;
+  bbox?: [number, number, number, number];
+  frameId?: string;
   position?: { lat: number; lng: number };
+}
+
+interface PerceptionDetectionPayload {
+  source_robot_id?: string | null;
+  source_robot_code?: string;
+  frame_id?: string;
+  detections: Array<{
+    class_name: string;
+    confidence: number;
+    bbox?: number[];
+    world_position?: { lat: number; lng: number };
+  }>;
 }
 
 const TYPE_FILTERS: Array<{ k: string; label: string }> = [
@@ -113,19 +127,24 @@ export function Blackboard() {
         refresh().catch(() => undefined);
       },
     );
-    const off2 = wsAddListener<{ class_name: string; confidence: number; source_robot_code?: string }>(
+    const off2 = wsAddListener<PerceptionDetectionPayload>(
       'perception.detection',
-      (p) => {
-        const ev: DetectionEvent = {
-          id: `${Date.now()}-${Math.random()}`,
+      (payload) => {
+        const source = payload.source_robot_code ?? payload.source_robot_id?.slice(0, 8) ?? '—';
+        const detections = payload.detections ?? [];
+        const events: DetectionEvent[] = detections.map((d, index) => ({
+          id: `${Date.now()}-${index}-${Math.random()}`,
           ts: new Date().toISOString(),
-          source: p.source_robot_code ?? '—',
-          className: p.class_name,
-          confidence: p.confidence,
+          source,
+          className: d.class_name,
+          confidence: d.confidence,
           fused: false,
-          dropped: p.confidence < 0.5,
-        };
-        setTimeline((prev) => [ev, ...prev].slice(0, 20));
+          dropped: d.confidence < 0.5,
+          bbox: normalizeBBox(d.bbox),
+          frameId: payload.frame_id,
+          position: d.world_position,
+        }));
+        setTimeline((prev) => [...events, ...prev].slice(0, 20));
       },
     );
     return () => { off1(); off2(); };
@@ -133,6 +152,17 @@ export function Blackboard() {
 
   const survivorCount = stats?.by_type?.survivor ?? 0;
   const fireCount = stats?.by_type?.fire ?? 0;
+  const videoCards = useMemo(() => {
+    const groups = new Map<string, DetectionEvent[]>();
+    timeline.filter((e) => !e.dropped).forEach((event) => {
+      groups.set(event.source, [...(groups.get(event.source) ?? []), event]);
+    });
+    return Array.from(groups.entries()).slice(0, 2).map(([label, detections]) => ({
+      label,
+      tint: detections.some((d) => d.className === 'fire' || d.className === 'smoke') ? 'fire' as const : 'normal' as const,
+      detections: detections.slice(0, 6).map(eventToVideoDetection).filter((d): d is VideoDetection => d !== null),
+    }));
+  }, [timeline]);
 
   return (
     <AppShell>
@@ -164,14 +194,16 @@ export function Blackboard() {
             </div>
 
             <div className="grid grid-cols-2 gap-3 mb-4">
-              <VideoCard label="UAV-001" tint="normal" detections={[
-                { type: 'survivor', conf: 0.92, x: 25, y: 35, w: 18, h: 30 },
-                { type: 'survivor', conf: 0.85, x: 60, y: 55, w: 14, h: 22 },
-              ]} />
-              <VideoCard label="UAV-003" tint="fire" detections={[
-                { type: 'fire', conf: 0.96, x: 25, y: 30, w: 25, h: 35 },
-                { type: 'smoke', conf: 0.78, x: 55, y: 15, w: 30, h: 25 },
-              ]} />
+              {videoCards.length > 0 ? (
+                videoCards.map((card) => (
+                  <VideoCard key={card.label} label={card.label} tint={card.tint} detections={card.detections} />
+                ))
+              ) : (
+                <>
+                  <VideoCard label="等待视觉流" tint="normal" detections={[]} emptyText="等待 perception.detection" />
+                  <VideoCard label="黑板融合流" tint="normal" detections={[]} emptyText="等待 blackboard.updated" />
+                </>
+              )}
             </div>
 
             <div className="text-xs mb-2 flex items-center justify-between">
@@ -336,8 +368,8 @@ export function Blackboard() {
   );
 }
 
-interface DetMock {
-  type: 'survivor' | 'fire' | 'smoke';
+interface VideoDetection {
+  type: string;
   conf: number;
   x: number;
   y: number;
@@ -345,7 +377,45 @@ interface DetMock {
   h: number;
 }
 
-function VideoCard({ label, tint, detections }: { label: string; tint: 'normal' | 'fire'; detections: DetMock[] }) {
+function normalizeBBox(bbox?: number[]): [number, number, number, number] | undefined {
+  if (!bbox || bbox.length < 4 || bbox.some((v) => !Number.isFinite(v))) return undefined;
+  return [bbox[0], bbox[1], bbox[2], bbox[3]];
+}
+
+function eventToVideoDetection(event: DetectionEvent): VideoDetection | null {
+  if (!event.bbox) return null;
+  const [x1, y1, x2, y2] = event.bbox;
+  const normalized = Math.max(Math.abs(x1), Math.abs(y1), Math.abs(x2), Math.abs(y2)) <= 1;
+  const scale = normalized ? 100 : 100 / 640;
+  const left = normalized ? x1 * 100 : x1 * scale;
+  const top = normalized ? y1 * 100 : y1 * scale;
+  const width = normalized ? (x2 - x1) * 100 : (x2 - x1) * scale;
+  const height = normalized ? (y2 - y1) * 100 : (y2 - y1) * scale;
+  return {
+    type: event.className,
+    conf: event.confidence,
+    x: clampPct(left),
+    y: clampPct(top),
+    w: clampPct(width, 4, 100),
+    h: clampPct(height, 4, 100),
+  };
+}
+
+function clampPct(value: number, min = 0, max = 100): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function VideoCard({
+  label,
+  tint,
+  detections,
+  emptyText,
+}: {
+  label: string;
+  tint: 'normal' | 'fire';
+  detections: VideoDetection[];
+  emptyText?: string;
+}) {
   return (
     <div
       className="relative rounded-lg overflow-hidden border"
@@ -364,6 +434,11 @@ function VideoCard({ label, tint, detections }: { label: string; tint: 'normal' 
         <span className="w-2 h-2 rounded-full pulse-dot" style={{ background: 'var(--danger)' }} />
         REC
       </div>
+      {detections.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-center px-4" style={{ color: 'var(--text-tertiary)' }}>
+          {emptyText ?? '本帧暂无有效 bbox'}
+        </div>
+      )}
       {detections.map((d, i) => {
         const color = d.type === 'fire' ? 'var(--danger)' : d.type === 'smoke' ? '#aaa' : 'var(--info)';
         return (
