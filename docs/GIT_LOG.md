@@ -29,9 +29,9 @@
 - 任务：P8 实验复盘收尾检查，补齐实验 WS 进度事件与测试覆盖
 - 工具：Codex
 - 分支：main
-- Commit message：待提交
-- Commit hash：待提交
-- 是否 push：待执行
+- Commit message：fix(experiments): P8 publish experiment progress events
+- Commit hash：87cd2c1
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - `backend/app/experiments/runner.py`：每个实验 run 完成后发布 `experiment.progress`，批次完成后发布 `experiment.completed`；修正 `vision_assisted_count` 为真实触发视觉加成的 bids 计数。

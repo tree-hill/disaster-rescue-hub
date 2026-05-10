@@ -30,9 +30,9 @@
   - unit + algorithms：17 passed
   - e2e：2 passed
 - Git 提交：
-  - commit message：待提交
-  - commit hash：待提交
-  - push 状态：待执行
+  - commit message：fix(experiments): P8 publish experiment progress events
+  - commit hash：87cd2c1
+  - push 状态：已 push 到 origin/main
 - 遗留问题：
   - P6.4/P6.5 YOLO 数据集准备与 Colab 训练仍需用户独立完成；P8.5 浏览器全屏截图仍需人工采集。
 - 下一步建议：
