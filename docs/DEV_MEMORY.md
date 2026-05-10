@@ -6,6 +6,40 @@
 
 ---
 
+#### 2026-05-11 02:53 — Codex — P8 收尾检查与实验事件补齐
+
+- 任务：检查 P8 已规划功能缺口，并补齐实验运行实时事件与后端测试覆盖
+- 执行工具：Codex
+- 修改类型：fix/test/docs
+- 涉及文件：
+  - `backend/app/experiments/runner.py`
+  - `backend/app/ws/event_bridge.py`
+  - `backend/tests/unit/test_p8_replay_experiment.py`
+  - `docs/DEV_MEMORY.md`
+  - `docs/TASK_BOARD.md`
+  - `docs/GIT_LOG.md`
+- 主要变更：
+  - ExperimentRunner 每完成一次 run 发布 `experiment.progress`，整批完成后发布 `experiment.completed`。
+  - WebSocket event bridge 将 `experiment.progress` / `experiment.completed` 转推到 commander 房间，对齐 `WS_EVENTS.md` §9。
+  - 修正 `raw_metrics.vision_assisted_count`：改为统计真实触发视觉加成的 bids，而不是把所有 CLOSED auction 都计为视觉辅助。
+  - 新增 P8 单元测试，覆盖 replay timeline 过滤、实验 stats/charts 聚合、experiment.progress payload 契约。
+- 验证命令：
+  - `cd backend; .\.venv\Scripts\python.exe -m pytest tests\unit tests\algorithms -q`
+  - `cd backend; .\.venv\Scripts\python.exe -m pytest tests\e2e -q`
+- 验证结果：
+  - unit + algorithms：17 passed
+  - e2e：2 passed
+- Git 提交：
+  - commit message：待提交
+  - commit hash：待提交
+  - push 状态：待执行
+- 遗留问题：
+  - P6.4/P6.5 YOLO 数据集准备与 Colab 训练仍需用户独立完成；P8.5 浏览器全屏截图仍需人工采集。
+- 下一步建议：
+  - 完成截图与 YOLO 训练曲线落盘后，统一整理 `docs/paper_assets/` 并做最终答辩材料核对。
+
+---
+
 #### 2026-05-10 - Claude Code - P8.4 前端实验面板联通真实 API
 
 - 任务：P8.4 前端 ExperimentPanel 接入真实后端

@@ -27,8 +27,10 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.event_bus import get_event_bus
 from app.core.exceptions import BusinessError
 from app.db.session import async_session_maker
+from app.models.dispatch import Bid
 from app.models.replay import ExperimentRun
 from app.models.task import Task
 from app.repositories.experiment import ExperimentRunRepository
@@ -137,10 +139,17 @@ class ExperimentRunner:
                         active_robot_count=active_count or _ACTIVE_ROBOT_COUNT,
                     )
                     _BATCHES[str(batch_id)]["completed"] += 1
+                    await self._publish_progress(
+                        batch_id=batch_id,
+                        completed_runs=_BATCHES[str(batch_id)]["completed"],
+                        total_runs=total,
+                        current_algorithm=algorithm,
+                    )
                     # 每次 run 后稍作 yield 避免阻塞事件循环
                     await asyncio.sleep(0)
 
             _BATCHES[str(batch_id)]["status"] = "completed"
+            await self._publish_completed(batch_id=batch_id, total_runs=total)
             logger.info("experiment_batch_completed", extra={"batch_id": str(batch_id), "total": total})
 
         except Exception as exc:
@@ -221,6 +230,9 @@ class ExperimentRunner:
                             "status": auction.status,
                             "latency_ms": auction.decision_latency_ms,
                             "winner": auction.winner_robot_id,
+                            "vision_assisted_count": await self._count_vision_assisted_bids(
+                                s, auction_id=auction.id
+                            ),
                         }
                     )
                     if auction.winner_robot_id:
@@ -231,10 +243,24 @@ class ExperimentRunner:
                     "experiment_auction_skipped",
                     extra={"task_id": str(task_id), "reason": str(exc)},
                 )
-                auction_results.append({"status": "ERROR", "latency_ms": None, "winner": None})
+                auction_results.append(
+                    {
+                        "status": "ERROR",
+                        "latency_ms": None,
+                        "winner": None,
+                        "vision_assisted_count": 0,
+                    }
+                )
             except Exception:
                 logger.exception("experiment_auction_error", extra={"task_id": str(task_id)})
-                auction_results.append({"status": "ERROR", "latency_ms": None, "winner": None})
+                auction_results.append(
+                    {
+                        "status": "ERROR",
+                        "latency_ms": None,
+                        "winner": None,
+                        "vision_assisted_count": 0,
+                    }
+                )
 
         # ── 3) 计算指标 ──────────────────────────────────────────────────────
         closed = [a for a in auction_results if a["status"] == "CLOSED"]
@@ -277,7 +303,7 @@ class ExperimentRunner:
             "total_decisions": len(auction_results),
             "hitl_interventions": 0,
             "vision_assisted_count": sum(
-                1 for a in auction_results if a["status"] == "CLOSED"
+                int(a.get("vision_assisted_count") or 0) for a in auction_results
             ),
         }
 
@@ -313,6 +339,78 @@ class ExperimentRunner:
                 "run_index": run_index,
                 "completion_rate": str(completion_rate),
                 "decision_latency_ms": avg_latency_ms,
+            },
+        )
+
+    async def _count_vision_assisted_bids(
+        self, session: AsyncSession, *, auction_id: UUID
+    ) -> int:
+        """统计本次拍卖中真实触发视觉加成的出价数量。"""
+        rows = (
+            await session.execute(select(Bid).where(Bid.auction_id == auction_id))
+        ).scalars().all()
+        return sum(
+            1
+            for bid in rows
+            if float(bid.vision_boost or 1.0) > 1.0
+            or bool((bid.breakdown or {}).get("vision_boosted"))
+        )
+
+    async def _publish_progress(
+        self,
+        *,
+        batch_id: UUID,
+        completed_runs: int,
+        total_runs: int,
+        current_algorithm: str,
+    ) -> None:
+        remaining = max(total_runs - completed_runs, 0)
+        await get_event_bus().publish(
+            "experiment.progress",
+            {
+                "batch_id": str(batch_id),
+                "completed_runs": completed_runs,
+                "total_runs": total_runs,
+                "current_algorithm": current_algorithm,
+                "estimated_remaining_sec": remaining * 5,
+            },
+        )
+
+    async def _publish_completed(self, *, batch_id: UUID, total_runs: int) -> None:
+        async with async_session_maker() as session:
+            runs = await ExperimentRunRepository(session).find_by_batch(batch_id)
+
+        by_algorithm: dict[str, list[float]] = {}
+        for run in runs:
+            if run.completion_rate is None:
+                continue
+            by_algorithm.setdefault(run.algorithm, []).append(float(run.completion_rate))
+
+        stats = {}
+        for algorithm, values in by_algorithm.items():
+            stats[algorithm] = {
+                "completion_rate_mean": sum(values) / len(values) if values else 0.0,
+                "completion_rate_std": statistics.stdev(values)
+                if len(values) >= 2
+                else 0.0,
+            }
+
+        started_values = [run.started_at for run in runs if run.started_at is not None]
+        finished_values = [run.finished_at for run in runs if run.finished_at is not None]
+        duration_sec = 0
+        if started_values and finished_values:
+            duration_sec = max(
+                0,
+                int((max(finished_values) - min(started_values)).total_seconds()),
+            )
+
+        await get_event_bus().publish(
+            "experiment.completed",
+            {
+                "batch_id": str(batch_id),
+                "total_runs": total_runs,
+                "duration_sec": duration_sec,
+                "stats": stats,
             },
         )
 

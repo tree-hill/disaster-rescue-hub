@@ -24,6 +24,29 @@
 
 ## 提交记录
 
+### 2026-05-11 02:53 — P8 收尾检查与实验事件补齐
+
+- 任务：P8 实验复盘收尾检查，补齐实验 WS 进度事件与测试覆盖
+- 工具：Codex
+- 分支：main
+- Commit message：待提交
+- Commit hash：待提交
+- 是否 push：待执行
+- 远程分支：origin/main
+- 主要修改：
+  - `backend/app/experiments/runner.py`：每个实验 run 完成后发布 `experiment.progress`，批次完成后发布 `experiment.completed`；修正 `vision_assisted_count` 为真实触发视觉加成的 bids 计数。
+  - `backend/app/ws/event_bridge.py`：注册 `experiment.progress` / `experiment.completed` 到 commander 房间的 WS 转推。
+  - `backend/tests/unit/test_p8_replay_experiment.py`：新增 P8 单元测试，覆盖 replay 时间轴过滤、实验统计/图表聚合与 progress payload。
+  - `docs/DEV_MEMORY.md`、`docs/TASK_BOARD.md`、`docs/GIT_LOG.md`：同步开发记忆。
+- 自检：
+  - `cd backend; .\.venv\Scripts\python.exe -m pytest tests\unit tests\algorithms -q` → 17 passed
+  - `cd backend; .\.venv\Scripts\python.exe -m pytest tests\e2e -q` → 2 passed
+- 回滚命令：
+  ```bash
+  git checkout -- backend/app/experiments/runner.py backend/app/ws/event_bridge.py docs/DEV_MEMORY.md docs/TASK_BOARD.md docs/GIT_LOG.md
+  git clean -f backend/tests/unit/test_p8_replay_experiment.py
+  ```
+
 ### 2026-05-10 - P8.5 论文素材：5 张算法对比图
 
 - 任务：P8.5 生成论文算法对比图（matplotlib PNG）

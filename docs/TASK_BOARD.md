@@ -55,6 +55,7 @@
 
 ### Done (P8 追加)
 
+- [x] P8 收尾检查与实验事件补齐（Codex，2026-05-11）：核对 P8 当前实现状态，确认 P8.1 replay 后端、P8.2/8.3/8.4/8.5 主链路已落地；补齐 `experiment.progress` / `experiment.completed` EventBus → WS commander 转推；修正 `ExperimentRunner.raw_metrics.vision_assisted_count` 为真实视觉加成 bids 计数；新增 `backend/tests/unit/test_p8_replay_experiment.py` 覆盖 replay timeline 过滤、实验 stats/charts 与 progress payload。验证：`pytest tests\unit tests\algorithms -q` 17 passed；`pytest tests\e2e -q` 2 passed。
 - [x] P8.2 实验运行器后端（Claude Code，2026-05-10）：ExperimentRunner.run_batch()（10 任务/run × 逐任务 start_auction × CASCADE 清除）+ ExperimentRunRepository + schemas（ExperimentBatchRequest/Status/ChartsResponse/compute_stats/build_charts）+ 4 REST 接口（POST 202 / GET 状态+runs+stats / GET charts / GET export）；commander/admin 加 experiment:run 权限；selfcheck 9/9；13 单测无回归。
 
 ### In Progress

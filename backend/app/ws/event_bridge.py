@@ -91,6 +91,14 @@ async def _relay_alert_ignored(payload: dict[str, Any]) -> None:
     await push_event("alert.ignored", payload, room="commander")
 
 
+async def _relay_experiment_progress(payload: dict[str, Any]) -> None:
+    await push_event("experiment.progress", payload, room="commander")
+
+
+async def _relay_experiment_completed(payload: dict[str, Any]) -> None:
+    await push_event("experiment.completed", payload, room="commander")
+
+
 def register_ws_relays(bus: EventBus) -> None:
     """订阅本任务范围内的 WS 转推 handler。subscribe 自带去重，幂等。"""
     bus.subscribe("task.created", _relay_task_created)
@@ -110,6 +118,9 @@ def register_ws_relays(bus: EventBus) -> None:
     bus.subscribe("alert.raised", _relay_alert_raised)
     bus.subscribe("alert.acknowledged", _relay_alert_acknowledged)
     bus.subscribe("alert.ignored", _relay_alert_ignored)
+    # P8.2 实验进度 WS 转推（WS_EVENTS §9）
+    bus.subscribe("experiment.progress", _relay_experiment_progress)
+    bus.subscribe("experiment.completed", _relay_experiment_completed)
 
 
 # ---------- P6.3 黑板 WS 转推 ----------
