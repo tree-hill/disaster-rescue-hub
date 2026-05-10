@@ -29,8 +29,8 @@
   - TypeScript 严格检查与 Vite 生产构建通过；仅保留 Vite CJS API、package type 与 chunk size 既有警告。
 - Git 提交：
   - commit message：feat(cockpit): P7.3 implement realtime Konva map module
-  - commit hash：待提交
-  - push 状态：待执行
+  - commit hash：00daeac
+  - push 状态：已 push 到 origin/main
 - 遗留问题：
   - 当前会话没有可调用的 Browser 自动化工具，未做浏览器截图级视觉回归；已通过前端构建验证类型与打包。
 - 下一步建议：

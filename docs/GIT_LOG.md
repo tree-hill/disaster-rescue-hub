@@ -30,8 +30,8 @@
 - 工具：Codex
 - 分支：main
 - Commit message：feat(cockpit): P7.3 implement realtime Konva map module
-- Commit hash：待提交
-- 是否 push：待执行
+- Commit hash：00daeac
+- 是否 push：是
 - 远程分支：origin/main
 - 主要修改：
   - `frontend/src/components/map/CockpitMap.tsx`：新增 React-Konva 实时态势地图，渲染机器人、任务区域、火点告警、比例尺与测距线。
