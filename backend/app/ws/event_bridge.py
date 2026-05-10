@@ -34,6 +34,10 @@ async def _relay_task_status_changed(payload: dict[str, Any]) -> None:
     await push_event("task.status_changed", payload, room="commander")
 
 
+async def _relay_task_progress_updated(payload: dict[str, Any]) -> None:
+    await push_event("task.progress_updated", payload, room="commander")
+
+
 async def _relay_auction_started(payload: dict[str, Any]) -> None:
     await push_event("auction.started", payload, room="commander")
 
@@ -104,6 +108,7 @@ def register_ws_relays(bus: EventBus) -> None:
     bus.subscribe("task.created", _relay_task_created)
     bus.subscribe("task.cancelled", _relay_task_cancelled)
     bus.subscribe("task.status_changed", _relay_task_status_changed)
+    bus.subscribe("task.progress_updated", _relay_task_progress_updated)
     # P5.4 调度模块事件（commander 房间，对照 WS_EVENTS §5）
     bus.subscribe("auction.started", _relay_auction_started)
     bus.subscribe("auction.bid_submitted", _relay_auction_bid_submitted)

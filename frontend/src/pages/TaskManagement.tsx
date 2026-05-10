@@ -5,7 +5,7 @@
  * - GET /tasks（status/priority/type/search/page/page_size）
  * - POST /tasks 创建任务（→ 自动触发拍卖，由 P5.7 dispatch_trigger 监听 task.created）
  * - POST /tasks/{id}/cancel {reason}
- * - WS commander 房间订阅 task.created / task.cancelled / task.reassigned
+ * - WS commander 房间订阅 task.created / task.cancelled / task.reassigned / task.progress_updated
  *
  * 占位：
  * - 「立即拍卖」按钮 → 暂用 alert（实际任务 PENDING 30s 自动重扫，无需手动）
@@ -119,6 +119,8 @@ export function TaskManagement() {
     const offs = [
       wsAddListener('task.created', () => refresh()),
       wsAddListener('task.cancelled', () => refresh()),
+      wsAddListener('task.status_changed', () => refresh()),
+      wsAddListener('task.progress_updated', () => refresh()),
       wsAddListener('task.reassigned', () => refresh()),
       wsAddListener('auction.completed', () => refresh()),
     ];

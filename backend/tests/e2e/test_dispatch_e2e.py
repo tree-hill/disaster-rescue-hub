@@ -81,12 +81,21 @@ async def test_e2e_1_full_task_lifecycle(client, commander_headers):
                 await session.commit()
 
         # 2) 等 auto-trigger handler 跑完一轮 → 任务变 ASSIGNED
-        async def _is_assigned() -> bool:
+        async def _is_assigned_and_event_captured() -> bool:
             async with async_session_maker() as session:
                 t = await session.get(Task, task_id)
-                return t is not None and t.status == "ASSIGNED"
+                assigned = t is not None and t.status == "ASSIGNED"
+            has_event = any(
+                evt_type == "task.status_changed"
+                and payload.get("task_id") == str(task_id)
+                and payload.get("to_status") == "ASSIGNED"
+                for evt_type, payload in captured
+            )
+            return assigned and has_event
 
-        assert await wait_until(_is_assigned, timeout=10.0), "auto-trigger 未在 10s 内完成"
+        assert await wait_until(_is_assigned_and_event_captured, timeout=10.0), (
+            "auto-trigger 未在 10s 内完成 ASSIGNED 状态与状态事件"
+        )
     finally:
         bus.publish = real_publish  # type: ignore[assignment]
 

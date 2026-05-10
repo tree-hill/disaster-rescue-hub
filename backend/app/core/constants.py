@@ -25,6 +25,12 @@ HEARTBEAT_TIMEOUT_SEC = 15
 EXECUTING_BATTERY_DRAIN_PCT = 0.5
 # EXECUTING 状态每 tick 朝目标移动 1 米（BUILD_ORDER §P3.4）
 MOVE_STEP_METERS = 1.0
+# Mock 任务进度：路径行进最多贡献 30%，抵达目标区域后每 tick 完成 10%。
+# 这是演示环境的进度上报模型；任务状态转移仍遵守 BUSINESS_RULES §2.1。
+TASK_ROUTE_PROGRESS_MAX_PCT = 30.0
+TASK_WORK_PROGRESS_PER_TICK_PCT = 10.0
+# 机器人与任务中心点距离小于该阈值即视为到达目标区域，触发 ASSIGNED→EXECUTING。
+TASK_TARGET_ARRIVAL_THRESHOLD_M = 2.0
 # 1° lat/lng 在赤道附近 ≈ 111320 米；30°N 时 lng 实际 ≈ 96522 米
 # Mock 阶段用统一 111320 简化（误差约 15%，毕设演示可接受）；
 # P5 调度的距离计算用真实 haversine

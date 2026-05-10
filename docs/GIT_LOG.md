@@ -24,6 +24,30 @@
 
 ## 提交记录
 
+### 2026-05-11 04:45 — 任务进度与地图联动修复
+
+- 任务：修复新任务分配机器人后任务进度不随地图/Agent 执行变化的问题
+- 工具：Codex
+- 分支：main
+- Commit message：待提交
+- Commit hash：待提交
+- 是否 push：待提交后 push
+- 远程分支：origin/main
+- 主要修改：
+  - `backend/app/agents/robot_agent.py`：接单后记录任务起点/目标点，按地图位移写回 `tasks.progress`；抵达目标后驱动 `ASSIGNED -> EXECUTING`，执行完成后 `COMPLETED`、释放 active assignment、机器人返航。
+  - `backend/app/ws/event_bridge.py`：新增 `task.progress_updated` 到 commander 房间的 WebSocket relay。
+  - `backend/app/services/dispatch_service.py`：HITL 改派成功后同步新获派 RobotAgent，避免 DB assignment 与 Agent 内存目标不一致。
+  - `frontend/src/store/ws.ts`、`frontend/src/pages/Cockpit.tsx`、`frontend/src/pages/TaskManagement.tsx`：补齐 task status/progress 事件类型和刷新监听。
+  - `backend/tests/unit/test_robot_agent_assignment.py`、`backend/tests/e2e/test_dispatch_e2e.py`：补充地图位移进度测试，并修正 E2E 异步事件等待。
+- 自检：
+  - `cd backend; .\.venv\Scripts\python.exe -m pytest tests\unit tests\algorithms tests\e2e -q` → 20 passed
+  - `cd backend; .\.venv\Scripts\python.exe -m ruff check app tests` → blocked：venv 缺少 `ruff`
+  - `cd frontend; npm.cmd run build` → passed（仅 Vite/package/chunk 既有警告）
+- 回滚命令：
+  ```bash
+  git checkout -- backend/app/agents/robot_agent.py backend/app/core/constants.py backend/app/services/dispatch_service.py backend/app/ws/event_bridge.py backend/tests/unit/test_robot_agent_assignment.py backend/tests/e2e/test_dispatch_e2e.py frontend/src/store/ws.ts frontend/src/pages/Cockpit.tsx frontend/src/pages/TaskManagement.tsx docs/DEV_MEMORY.md docs/TASK_BOARD.md docs/GIT_LOG.md
+  ```
+
 ### 2026-05-11 04:21 — 前端静态展示数据联动检查
 
 - 任务：检查并修正前端中应与现有 API / WS 数据联动但仍静态展示的区域

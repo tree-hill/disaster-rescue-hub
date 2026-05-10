@@ -29,6 +29,7 @@ from decimal import Decimal
 from typing import Any, Awaitable, Callable
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -41,14 +42,24 @@ from app.core.constants import (
     METERS_PER_DEGREE,
     MOVE_STEP_METERS,
     RETURNING_ARRIVAL_THRESHOLD_M,
+    TASK_ROUTE_PROGRESS_MAX_PCT,
+    TASK_TARGET_ARRIVAL_THRESHOLD_M,
+    TASK_WORK_PROGRESS_PER_TICK_PCT,
 )
+from app.core.event_bus import get_event_bus
 from app.db.session import async_session_maker
 from app.models.robot import RobotFault, RobotState
+from app.models.task import Task, TaskAssignment
 from app.perception.service import PerceptionService
 from app.repositories.robot import RobotRepository
 from app.repositories.robot_fault import RobotFaultRepository
 from app.repositories.robot_state import RobotStateRepository
+from app.repositories.task_assignment import TaskAssignmentRepository
 from app.schemas.common import Detection, Position
+from app.services.task_status_machine import (
+    TERMINAL_TASK_STATUSES,
+    transit as transit_task,
+)
 from app.ws.events import push_event
 
 logger = logging.getLogger(__name__)
@@ -128,6 +139,7 @@ class RobotAgent:
         self.battery = battery
         self.current_task_id: UUID | None = None
         self.target_position: dict[str, float] | None = None  # set_target_position 设置
+        self.task_origin_position: dict[str, float] | None = None
 
         # 召回上下文（P3.6）：service 写 intervention 后调 request_recall 时填充，
         # 用于 _complete_recall 时填到 robot.recall_completed payload
@@ -233,6 +245,7 @@ class RobotAgent:
             self.transit("EXECUTING", reason=f"auction_won:{task_id}")
 
         self.current_task_id = task_id
+        self.task_origin_position = dict(self.position)
         self.set_target_position(
             float(target_position["lat"]),
             float(target_position["lng"]),
@@ -276,6 +289,7 @@ class RobotAgent:
         if self.fsm_state in {"EXECUTING", "BIDDING"}:
             self.transit("RETURNING", reason=f"hitl_recall:user={user_id}")
             self.target_position = _base_position()
+            self.task_origin_position = None
         else:
             # 已 RETURNING：保险地确认 target=基地（之前任务侧可能 set 过其他 target）
             self.target_position = _base_position()
@@ -303,29 +317,35 @@ class RobotAgent:
         recall_user_id = self._recall_user_id
         recall_reason = self._recall_reason
         recall_intervention_id = self._recall_intervention_id
+        was_recall = recall_user_id is not None or recall_intervention_id is not None
 
         # 状态收尾
-        self.transit("IDLE", reason="recall_arrived_base")
+        self.transit(
+            "IDLE",
+            reason="recall_arrived_base" if was_recall else "return_arrived_base",
+        )
         self.current_task_id = None
         self.target_position = None
+        self.task_origin_position = None
         self._recall_user_id = None
         self._recall_reason = None
         self._recall_intervention_id = None
         self._recall_started_at = None
 
-        await self._emit_event(
-            "robot.recall_completed",
-            {
-                "robot_id": str(self.robot_id),
-                "robot_code": self.code,
-                "initiated_by_user_id": str(recall_user_id) if recall_user_id else None,
-                "reason": recall_reason,
-                "intervention_id": (
-                    str(recall_intervention_id) if recall_intervention_id else None
-                ),
-                "eta_actual_sec": eta_actual_sec,
-            },
-        )
+        if was_recall:
+            await self._emit_event(
+                "robot.recall_completed",
+                {
+                    "robot_id": str(self.robot_id),
+                    "robot_code": self.code,
+                    "initiated_by_user_id": str(recall_user_id) if recall_user_id else None,
+                    "reason": recall_reason,
+                    "intervention_id": (
+                        str(recall_intervention_id) if recall_intervention_id else None
+                    ),
+                    "eta_actual_sec": eta_actual_sec,
+                },
+            )
 
     # ---------- 故障检测 ----------
     def _check_faults(self) -> str | None:
@@ -343,6 +363,166 @@ class RobotAgent:
         ):
             return "unknown"
         return None
+
+    # ---------- 任务进度联动（地图位置 → Task.progress / Task.status） ----------
+
+    def _distance_to_task_target_m(self) -> float | None:
+        """当前地图位置到任务目标点的距离（米）。无 target 时返回 None。"""
+        if self.target_position is None:
+            return None
+        dlat = self.position["lat"] - self.target_position["lat"]
+        dlng = self.position["lng"] - self.target_position["lng"]
+        return math.hypot(dlat, dlng) * METERS_PER_DEGREE
+
+    def _arrived_at_task_target(self) -> bool:
+        dist_m = self._distance_to_task_target_m()
+        return dist_m is not None and dist_m <= TASK_TARGET_ARRIVAL_THRESHOLD_M
+
+    def _route_progress_pct(self) -> float:
+        """按起点→任务中心的地图距离估算路程进度，最多贡献 30%。"""
+        if self.task_origin_position is None or self.target_position is None:
+            return 0.0
+        total_deg = math.hypot(
+            self.target_position["lat"] - self.task_origin_position["lat"],
+            self.target_position["lng"] - self.task_origin_position["lng"],
+        )
+        if total_deg < 1e-12:
+            return TASK_ROUTE_PROGRESS_MAX_PCT
+        remaining_deg = math.hypot(
+            self.target_position["lat"] - self.position["lat"],
+            self.target_position["lng"] - self.position["lng"],
+        )
+        completed = max(0.0, min(1.0, 1.0 - remaining_deg / total_deg))
+        return completed * TASK_ROUTE_PROGRESS_MAX_PCT
+
+    async def _sync_task_progress(self) -> None:
+        """把 Agent 地图位置和任务状态持久化同步。
+
+        规则：
+        - 路途中：progress 跟随地图路程推进，最多到 30%。
+        - 抵达目标：任务 ASSIGNED → EXECUTING，并把 progress 至少置为 30%。
+        - 执行中：每 tick 增加固定 mock 工作进度；到 100% 后任务 COMPLETED、
+          释放 active assignment，机器人转 RETURNING。
+        """
+        if self.current_task_id is None or self.fsm_state != "EXECUTING":
+            return
+
+        events: list[tuple[str, dict[str, Any]]] = []
+        should_return_to_base = False
+
+        async with async_session_maker() as session:
+            stmt = (
+                select(Task)
+                .where(Task.id == self.current_task_id)
+                .with_for_update()
+            )
+            task = (await session.execute(stmt)).scalar_one_or_none()
+            if task is None or task.status in TERMINAL_TASK_STATUSES:
+                self.current_task_id = None
+                self.target_position = None
+                self.task_origin_position = None
+                return
+
+            active_stmt = select(TaskAssignment).where(
+                TaskAssignment.task_id == task.id,
+                TaskAssignment.robot_id == self.robot_id,
+                TaskAssignment.is_active.is_(True),
+            )
+            active_assignment = (await session.execute(active_stmt)).scalar_one_or_none()
+            if active_assignment is None:
+                self.current_task_id = None
+                self.target_position = _base_position()
+                self.task_origin_position = None
+                if self.fsm_state == "EXECUTING":
+                    self.transit("RETURNING", reason=f"assignment_released:{task.id}")
+                return
+
+            old_status = str(task.status)
+            old_progress = float(task.progress or 0.0)
+            new_progress = old_progress
+            arrived = self._arrived_at_task_target()
+
+            if task.status == "ASSIGNED":
+                route_progress = self._route_progress_pct()
+                new_progress = max(old_progress, route_progress)
+                if arrived:
+                    transit_task(
+                        task,
+                        "EXECUTING",
+                        reason=f"agent_arrived:{self.robot_id}",
+                    )
+                    new_progress = max(new_progress, TASK_ROUTE_PROGRESS_MAX_PCT)
+                    events.append(
+                        (
+                            "task.status_changed",
+                            {
+                                "task_id": str(task.id),
+                                "task_code": task.code,
+                                "from_status": old_status,
+                                "to_status": "EXECUTING",
+                                "assigned_robot_ids": [str(self.robot_id)],
+                            },
+                        )
+                    )
+            elif task.status == "EXECUTING":
+                new_progress = max(
+                    old_progress,
+                    min(100.0, old_progress + TASK_WORK_PROGRESS_PER_TICK_PCT),
+                )
+                if new_progress >= 100.0:
+                    new_progress = 100.0
+                    transit_task(
+                        task,
+                        "COMPLETED",
+                        reason=f"agent_progress_done:{self.robot_id}",
+                    )
+                    await TaskAssignmentRepository(session).release_active_for_task(
+                        task.id, released_at=datetime.now(timezone.utc)
+                    )
+                    should_return_to_base = True
+                    events.append(
+                        (
+                            "task.status_changed",
+                            {
+                                "task_id": str(task.id),
+                                "task_code": task.code,
+                                "from_status": old_status,
+                                "to_status": "COMPLETED",
+                                "assigned_robot_ids": [],
+                            },
+                        )
+                    )
+
+            if new_progress > old_progress:
+                task.progress = Decimal(f"{new_progress:.2f}")
+                events.append(
+                    (
+                        "task.progress_updated",
+                        {
+                            "task_id": str(task.id),
+                            "task_code": task.code,
+                            "progress": float(new_progress),
+                            "status": str(task.status),
+                        },
+                    )
+                )
+
+            if events:
+                await session.commit()
+
+        for event_type, payload in events:
+            try:
+                await get_event_bus().publish(event_type, payload)
+            except Exception:
+                logger.exception(
+                    "robot_task_progress_publish_failed",
+                    extra={"event_type": event_type, "payload": payload},
+                )
+
+        if should_return_to_base and self.fsm_state == "EXECUTING":
+            self.transit("RETURNING", reason=f"task_completed:{self.current_task_id}")
+            self.target_position = _base_position()
+            self.task_origin_position = None
 
     # ---------- Mock 行为 ----------
     def _move_toward_target(self) -> None:
@@ -533,6 +713,9 @@ class RobotAgent:
         if self.fsm_state in {"EXECUTING", "RETURNING"}:
             self._move_toward_target()
             self._drain_battery()
+
+        # 2.2) EXECUTING 任务进度与地图位置联动（写 tasks / task_assignments + WS 事件）
+        await self._sync_task_progress()
 
         # 2.5) RETURNING 抵达基地 → IDLE 收尾 + recall_completed
         if self.fsm_state == "RETURNING" and self._arrived_at_base():

@@ -31,6 +31,8 @@ export type WSEventName =
   | 'alert.ignored'
   | 'task.created'
   | 'task.cancelled'
+  | 'task.status_changed'
+  | 'task.progress_updated'
   | 'task.reassigned'
   | 'auction.started'
   | 'auction.bid_submitted'

@@ -5,6 +5,7 @@ import uuid
 import pytest
 
 from app.agents.robot_agent import RobotAgent
+from app.core.constants import METERS_PER_DEGREE, TASK_ROUTE_PROGRESS_MAX_PCT
 
 
 def _agent(*, fsm_state: str = "IDLE") -> RobotAgent:
@@ -58,3 +59,24 @@ def test_accept_assignment_interrupts_returning_robot() -> None:
     assert agent.target_position is not None
     assert agent.target_position["lat"] == pytest.approx(30.226)
 
+
+def test_route_progress_is_derived_from_map_position() -> None:
+    agent = _agent(fsm_state="IDLE")
+    task_id = uuid.uuid4()
+    target_lat = agent.position["lat"] + 100.0 / METERS_PER_DEGREE
+
+    agent.accept_assignment(
+        task_id=task_id,
+        target_position={
+            "lat": target_lat,
+            "lng": agent.position["lng"],
+            "altitude_m": None,
+        },
+    )
+
+    assert agent._route_progress_pct() == pytest.approx(0.0)
+    agent.position["lat"] += 50.0 / METERS_PER_DEGREE
+    assert agent._route_progress_pct() == pytest.approx(TASK_ROUTE_PROGRESS_MAX_PCT / 2)
+    agent.position["lat"] = target_lat
+    assert agent._arrived_at_task_target() is True
+    assert agent._route_progress_pct() == pytest.approx(TASK_ROUTE_PROGRESS_MAX_PCT)

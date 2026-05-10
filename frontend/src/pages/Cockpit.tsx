@@ -195,6 +195,13 @@ export function Cockpit() {
         pushLog(`task.cancelled · ${t?.code ?? ''}`);
         listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);
       }),
+      wsAddListener('task.status_changed', () => {
+        pushLog('task.status_changed');
+        listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);
+      }),
+      wsAddListener('task.progress_updated', () => {
+        listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);
+      }),
       wsAddListener('task.reassigned', () => {
         pushLog('task.reassigned');
         listTasks({ page_size: 10 }).then((p) => setTasks(p.items)).catch(() => undefined);

@@ -6,6 +6,48 @@
 
 ---
 
+#### 2026-05-11 04:45 — Codex — 任务进度与地图联动修复
+
+- 任务：修复新建任务完成拍卖分配后，机器人已接单移动但 `tasks.progress` 不变化、任务卡片/地图缺少同源进度反馈的问题
+- 执行工具：Codex
+- 修改类型：fix/backend/frontend/test/docs
+- 涉及文件：
+  - `backend/app/agents/robot_agent.py`
+  - `backend/app/core/constants.py`
+  - `backend/app/services/dispatch_service.py`
+  - `backend/app/ws/event_bridge.py`
+  - `backend/tests/unit/test_robot_agent_assignment.py`
+  - `backend/tests/e2e/test_dispatch_e2e.py`
+  - `frontend/src/store/ws.ts`
+  - `frontend/src/pages/Cockpit.tsx`
+  - `frontend/src/pages/TaskManagement.tsx`
+  - `docs/DEV_MEMORY.md`
+  - `docs/TASK_BOARD.md`
+  - `docs/GIT_LOG.md`
+- 主要变更：
+  - `RobotAgent` 接单时记录任务起点和目标点；每 tick 根据地图位置计算路程进度，写回 `tasks.progress`。
+  - 机器人抵达任务中心后自动驱动任务 `ASSIGNED -> EXECUTING`，随后按 mock 工作进度推进到 `COMPLETED`，并释放 active assignment、机器人进入 RETURNING。
+  - 新增 `task.progress_updated` EventBus -> WebSocket commander 转推；前端工作台和任务管理页监听 `task.status_changed` / `task.progress_updated` 后刷新任务列表。
+  - HITL 改派成功后同步新获派 RobotAgent，避免 DB assignment 与 Agent 内存目标割裂。
+  - 修正 E2E 测试等待逻辑，避免在异步事件尚未发布时提前恢复 monkeypatch。
+- 验证命令：
+  - `cd backend; .\.venv\Scripts\python.exe -m pytest tests\unit tests\algorithms tests\e2e -q`
+  - `cd backend; .\.venv\Scripts\python.exe -m ruff check app tests`
+  - `cd frontend; npm.cmd run build`
+- 验证结果：
+  - pytest：20 passed
+  - ruff：未执行，当前 venv 缺少 `ruff` 模块
+  - frontend build：通过；仅保留 Vite CJS API、package type、chunk size 既有警告
+- Git 提交：
+  - commit message：待提交
+  - commit hash：待提交
+  - push 状态：待提交后 push
+- 遗留问题：
+  - mock 进度模型按“路程最多 30% + 抵达后每 tick 10%”推进，适合演示；真实机器人接入时应改为由机器人任务执行上报实际进度。
+  - 后端静态检查仍受缺少 `ruff` 依赖影响。
+- 下一步建议：
+  - 演示环境开启 `MOCK_AGENTS_ENABLED=true` 后创建默认中心任务，观察 `/cockpit` 地图、任务进度条和任务状态同步变化。
+
 #### 2026-05-11 04:21 — Codex — 前端静态展示数据联动检查
 
 - 任务：进一步检查前端仍然存在的静态展示，优先把已有 API / WS 可支撑的展示改为真实数据驱动

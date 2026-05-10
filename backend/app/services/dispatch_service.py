@@ -920,6 +920,14 @@ class DispatchService:
         await self.session.refresh(intervention)
 
         # === 8) 事务外推送 WS 事件（commit 之后；publish 失败仅日志）
+        # 同步 live Agent：HITL 改派与自动拍卖一样，需要把新 active assignment
+        # 交给机器人协程，否则任务会停留在 DB 已改派、Agent 仍执行旧目标的割裂状态。
+        await self._sync_winner_agent(
+            winner_robot_id=new_robot.id,
+            task=task,
+            task_view=task_view,
+        )
+
         # task.reassigned → commander：from_robot 取释放前第一条 active；多机协同时
         # 仍只挑一条便于前端展示，audit 完整链路看 intervention.before_state。
         from_robot_id: UUID | None = (

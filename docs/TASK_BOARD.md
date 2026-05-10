@@ -55,6 +55,7 @@
 
 ### Done (P8 追加)
 
+- [x] 任务进度与地图联动修复（Codex，2026-05-11）：修复新任务自动拍卖分配后仅机器人移动、`tasks.progress` 不变化的问题；`RobotAgent` 接单记录起点/目标点，每 tick 按地图位移写回路程进度，抵达目标后驱动 `ASSIGNED -> EXECUTING`，继续推进到 `COMPLETED` 并释放 active assignment、机器人 RETURNING；新增 `task.progress_updated` WS relay，Cockpit 与 TaskManagement 监听进度/状态事件自动刷新；HITL 改派后同步新 RobotAgent。验证：`pytest tests\unit tests\algorithms tests\e2e -q` 20 passed；`npm.cmd run build` 通过；ruff 因 venv 缺模块未执行。
 - [x] 前端静态展示数据联动检查（Codex，2026-05-11）：告警中心关联任务/机器人与响应统计改接真实数据；黑板视频 bbox 改由 `perception.detection` / `blackboard.updated` 驱动；Admin 场景剧本接 `/scenarios`、调度算法接 `/dispatch/algorithm`；机器人管理当前页全量补状态并用汇总数据算类型/故障；复盘历史页取消 mock 会话伪装，空接口显示空状态，机器人有坐标时按真实位置投影。验证：`cd frontend; npm.cmd run build` 通过；`npm.cmd run lint` 因仓库缺 ESLint 配置未执行。
 - [x] P8 收尾检查与实验事件补齐（Codex，2026-05-11）：核对 P8 当前实现状态，确认 P8.1 replay 后端、P8.2/8.3/8.4/8.5 主链路已落地；补齐 `experiment.progress` / `experiment.completed` EventBus → WS commander 转推；修正 `ExperimentRunner.raw_metrics.vision_assisted_count` 为真实视觉加成 bids 计数；新增 `backend/tests/unit/test_p8_replay_experiment.py` 覆盖 replay timeline 过滤、实验 stats/charts 与 progress payload。验证：`pytest tests\unit tests\algorithms -q` 17 passed；`pytest tests\e2e -q` 2 passed。
 - [x] P8.2 实验运行器后端（Claude Code，2026-05-10）：ExperimentRunner.run_batch()（10 任务/run × 逐任务 start_auction × CASCADE 清除）+ ExperimentRunRepository + schemas（ExperimentBatchRequest/Status/ChartsResponse/compute_stats/build_charts）+ 4 REST 接口（POST 202 / GET 状态+runs+stats / GET charts / GET export）；commander/admin 加 experiment:run 权限；selfcheck 9/9；13 单测无回归。
