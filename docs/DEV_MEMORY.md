@@ -6,6 +6,22 @@
 
 ---
 
+#### 2026-05-10 - Claude Code - P8.3 跑实验
+
+- 任务：P8.3 运行 2 批次 × 3 算法 × 10 次 = 60 条 ExperimentRun
+- 执行工具：Claude Code（run_experiments.py 脚本）
+- 关键结果（论文素材）：
+  - AUCTION_HUNGARIAN：avg_cr=100%，avg_lat=14.9ms，load_std=0.500，avg_path=19.654km
+  - GREEDY：avg_cr=100%，avg_lat=14.2ms，load_std=0.500，avg_path=20.211km（比 Hungarian 差 2.8%）
+  - RANDOM：avg_cr=100%，avg_lat=14.7ms，load_std=0.610（比结构化算法差 22%），avg_path=20.018km
+- 结论：低负载场景（25 机器人空闲，10 任务/run）三算法完成率均 100%；Hungarian 全局最优
+  性在路径长度上体现（2.8% 改善）；RANDOM 负载均衡最差（std_dev 22% 更高）→论文支撑观点：
+  「Hungarian 在路径效率和负载均衡上显著优于 RANDOM，在路径效率上略优于 Greedy」
+- batch_id_1=7207fd42-be39-4fcd-9031-b72604e3586d（20 H + 20 G + 20 R = 60 runs 含 selfcheck 2）
+- batch_id_2=575bc666-acda-4fbc-8b4a-4038023dc8d9
+
+---
+
 #### 2026-05-10 - Claude Code - P8.2 实验运行器后端
 
 - 任务：P8.2 ExperimentRunner 后端实装

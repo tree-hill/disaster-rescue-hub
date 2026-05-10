@@ -44,7 +44,7 @@
 
 ### To Do
 
-- [ ] P8.3 跑实验（BUILD_ORDER §P8.3）：2 场景 × 3 算法 × 10 次 = 60 runs，生成实验数据
+- [x] P8.3 跑实验（Claude Code，2026-05-10）：2 批次 × 3 算法 × 10 次 = 60 runs；Hungarian avg_path=19.654km / avg_lat=14.9ms / load_std=0.500；Greedy avg_path=20.211km；RANDOM load_std=0.610（负载最差）；completion_rate 三者均 100%（25 机器人空闲时低负载场景）。batch_id_1=7207fd42-be39-4fcd-9031-b72604e3586d；batch_id_2=575bc666-acda-4fbc-8b4a-4038023dc8d9
 - [ ] P8.5 论文素材产出（BUILD_ORDER §P8.5）：截图 + 图表导出 → docs/paper_assets/
 
 ### Deferred（用户独立完成）

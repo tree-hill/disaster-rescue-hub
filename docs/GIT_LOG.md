@@ -24,6 +24,22 @@
 
 ## 提交记录
 
+### 2026-05-10 - P8.3 跑实验（60 runs）
+
+- 任务：P8.3 2 批次 × 3 算法 × 10 次 = 60 条 ExperimentRun
+- 工具：Claude Code
+- 分支：main
+- Commit message：feat: P8.3 run experiments — 60 ExperimentRuns across 2 batches × 3 algos × 10 reps
+- Commit hash：（待填）
+- 是否 push：是
+- 远程分支：origin/main
+- 主要修改：
+  - `backend/scripts/run_experiments.py`：批量实验脚本（60 runs）
+  - `backend/scripts/show_exp_stats.py`：实验结果汇总脚本
+  - 论文关键数据：Hungarian avg_path=19.654km（比 Greedy 低 2.8%），RANDOM load_std=0.610（比 Hungarian/Greedy 高 22%）
+  - batch_id_1=7207fd42-be39-4fcd-9031-b72604e3586d
+  - batch_id_2=575bc666-acda-4fbc-8b4a-4038023dc8d9
+
 ### 2026-05-10 - P8.2 实验运行器后端
 
 - 任务：P8.2 ExperimentRunner + REST API
